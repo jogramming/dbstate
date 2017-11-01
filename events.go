@@ -1,16 +1,13 @@
 package dbstate
 
 import (
-	"bytes"
-	"encoding/gob"
 	"github.com/Sirupsen/logrus"
 	"github.com/bwmarrin/discordgo"
-	"github.com/dgraph-io/badger"
-	"github.com/pkg/errors"
+	// "github.com/dgraph-io/badger"
 )
 
 func (s *State) HandleEvent(session *discordgo.Session, eventInterface interface{}) {
-	if ok, _ := eventInterface.(*discordgo.Event); ok {
+	if _, ok := eventInterface.(*discordgo.Event); ok {
 		// Fast path this since this is sent for every single event
 		return
 	}
@@ -20,11 +17,17 @@ func (s *State) HandleEvent(session *discordgo.Session, eventInterface interface
 	switch event := eventInterface.(type) {
 	case *discordgo.Ready:
 		if !session.SyncEvents {
-			logrus.Warn("Undefined behaviour will occur in certain siutations when sync events is not set")
+			// We rely on only 1 events per shard being handled at a time to make reusing buffers without locks easier
+			panic("Session.SyncEvents not set, this mode is unsupported.")
+		}
+
+		if session.ShardCount != s.numShards && session.ShardCount > 0 {
+			// If this is true it would panic down the line anyways, make it clear what went wrong
+			panic("Incorrect shard counts passed to NewState, session.ShardCount had different value")
 		}
 
 		logrus.Infof("Received ready for shard %d", session.ShardID)
-		err = s.HandleReady(event)
+		err = s.HandleReady(session.ShardID, event)
 	}
 
 	if err != nil {
@@ -32,43 +35,25 @@ func (s *State) HandleEvent(session *discordgo.Session, eventInterface interface
 	}
 }
 
-func (s *State) HandleReady(r *discordgo.Ready) error {
-
-	var buf bytes.Buffer
-	encoder := gob.NewEncoder(&buf)
-
-	err := encoder.Encode(r.User)
-	if err != nil {
-		return errors.WithMessage(err, "Encode Bot User")
-	}
+func (s *State) HandleReady(shardID int, r *discordgo.Ready) error {
 
 	// Handle the initial load
-	s.DB.Update(func(tx *badger.Txn) error {
-		tx.Set([]byte("bot_user"), buf.Bytes(), userMeta)
-		buf.Reset()
-		return nil
-	})
+	err := s.setKey(shardID, nil, KeySelfUser, r.User)
+	if err != nil {
+		return err
+	}
 
 	for _, g := range r.Guilds {
-		err := s.HandleGuildCreate(g)
+		err := s.HandleGuildCreate(shardID, g)
 		if err != nil {
 			return err
 		}
 	}
 
-	for _, g := range r.Guilds {
-		if !g.Unavailable {
-			continue
-		}
-
-	}
-
+	return nil
 }
 
-func (s *State) HandleGuildCreate(g *discordgo.Guild) error {
-	var buf bytes.Buffer
-	encoder := gob.NewEncoder(&buf)
-
+func (s *State) HandleGuildCreate(shardID int, g *discordgo.Guild) error {
 	var gCopy = new(discordgo.Guild)
 	*gCopy = *g
 
@@ -76,20 +61,8 @@ func (s *State) HandleGuildCreate(g *discordgo.Guild) error {
 	gCopy.Presences = nil
 	gCopy.VoiceStates = nil
 
-	err := encoder.Encode(gCopy)
-	if err != nil {
-		return errors.WithMessage(err, "gobEncode gcopy")
-	}
-
 	// Handle the initial load
-	s.DB.Update(func(tx *badger.Txn) error {
+	err := s.setKey(shardID, nil, KeyGuild(g.ID), gCopy)
 
-		// encoderSerialized := buf.Bytes()
-
-		tx.Set([]byte("bot_user"), buf.Bytes(), userMeta)
-		buf.Reset()
-
-	})
-
-	return nil
+	return err
 }
