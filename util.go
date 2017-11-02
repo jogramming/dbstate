@@ -5,7 +5,6 @@ import (
 	"encoding/gob"
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
-	"reflect"
 )
 
 // setKey is a helper to encode and set a get using the provided shards encoder and buffer
