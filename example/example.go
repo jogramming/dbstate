@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/jonas747/dbstate"
 	"github.com/jonas747/dshardmanager"
@@ -44,5 +47,38 @@ func main() {
 	}
 
 	log.Println("Running....")
+	http.HandleFunc("/gs", HandleGuildSize)
 	log.Fatal(http.ListenAndServe(":7441", nil))
+}
+
+func HandleGuildSize(w http.ResponseWriter, r *http.Request) {
+	gId := r.URL.Query().Get("guild")
+	if gId == "" {
+		return
+	}
+
+	g, err := State.Guild(nil, gId)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	buffer := new(bytes.Buffer)
+	encoder := gob.NewEncoder(buffer)
+
+	err = encoder.Encode(g)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	encoded := make([]byte, buffer.Len())
+	_, err = buffer.Read(encoded)
+
+	buffer.Reset()
+	if err != nil {
+		return
+	}
+
+	w.Write([]byte(fmt.Sprintf("Size of guild %s: %d bytes", g.Name, len(encoded))))
 }

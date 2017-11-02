@@ -59,9 +59,9 @@ func (s *State) HandleEvent(session *discordgo.Session, eventInterface interface
 		return
 	}
 
-	typ := reflect.TypeOf(eventInterface)
+	typ := reflect.Indirect(reflect.ValueOf(eventInterface)).Type()
 	evtName := typ.Name()
-	logrus.Info("Handled event %s", evtName)
+	logrus.Infof("Handled event %s", evtName)
 
 	if err != nil {
 		logrus.WithError(err).Error("Error handling event " + evtName)
@@ -227,7 +227,7 @@ func (s *State) ChannelCreateUpdate(shardID int, txn *badger.Txn, channel *disco
 	if channel.Type == discordgo.ChannelTypeGuildText && addToGuild {
 		guild, err := s.Guild(txn, channel.GuildID)
 		if err != nil {
-			return errors.WithMessage(err, "GuildUpdate")
+			return errors.WithMessage(err, "ChannelUpdate")
 		}
 
 		found := false
