@@ -17,4 +17,5 @@ This is still in development, The status is shown below:
  - [ ] Role tracking and acessors (should roles be tracked on guild? probably the simplest solution, although it can get quite big with a lot of channels and roles)
  - [ ] Message tracking and accessors, aswell as a TTL for messages (this TTL feature will hit badger soon apperently)
  - [ ] Voice State tracking and accessors
+ - [ ] Emoji State tracking and accessors (Put on guild object?)
 
