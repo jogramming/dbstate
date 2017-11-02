@@ -11,3 +11,4 @@ func KeyGuild(guildID string) string                      { return "guilds:" + g
 func KeyGuildMemberCount(guildID string) string           { return "gm_count:" + guildID }
 func KeyGuildMember(guildID, userID string) string        { return "guild_members:" + guildID + ":" + userID }
 func KeyGuildMembersIteratorPrefix(guildID string) string { return "guild_members:" + guildID + ":" }
+func KeyChannel(channelID string) string                  { return "channels:" + channelID }

@@ -89,3 +89,9 @@ func (s *State) IterateGuildMembers(txn *badger.Txn, guildID string, f func(m *d
 	}
 	return nil
 }
+
+func (s *State) Channel(txn *badger.Txn, channelID string) (*discordgo.Channel, error) {
+	var dest discordgo.Channel
+	err := s.GetKey(txn, KeyChannel(channelID), &dest)
+	return &dest, err
+}

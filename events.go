@@ -42,6 +42,12 @@ func (s *State) HandleEvent(session *discordgo.Session, eventInterface interface
 		err = s.MemberUpdate(session.ShardID, nil, event.Member)
 	case *discordgo.GuildMemberRemove:
 		err = s.MemberRemove(session.ShardID, nil, event.Member.GuildID, event.Member.User.ID, true)
+	case *discordgo.ChannelCreate:
+		err = s.ChannelCreateUpdate(session.ShardID, nil, event.Channel, true)
+	case *discordgo.ChannelUpdate:
+		err = s.ChannelCreateUpdate(session.ShardID, nil, event.Channel, true)
+	case *discordgo.ChannelDelete:
+		err = s.ChannelDelete(session.ShardID, nil, event.Channel.ID)
 	}
 
 	if err != nil {
@@ -87,6 +93,15 @@ func (s *State) GuildCreate(shardID int, g *discordgo.Guild) error {
 		for _, m := range g.Members {
 			m.GuildID = g.ID
 			err := s.MemberUpdate(shardID, txn, m)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Load channels to global registry
+		for _, c := range g.Channels {
+			c.GuildID = g.ID
+			err := s.ChannelCreateUpdate(0, txn, c, false)
 			if err != nil {
 				return err
 			}
@@ -190,4 +205,91 @@ func (s *State) MemberRemove(shardID int, txn *badger.Txn, guildID, userID strin
 	}
 
 	return txn.Delete([]byte(KeyGuildMember(guildID, userID)))
+}
+
+// ChannelCreateUpdate creates or updates a channel in the state
+// if addtoguild is set, it will add and update it on the actual guild object aswell
+func (s *State) ChannelCreateUpdate(shardID int, txn *badger.Txn, channel *discordgo.Channel, addToGuild bool) error {
+	if txn == nil {
+		return s.DB.Update(func(txn *badger.Txn) error {
+			return s.ChannelCreateUpdate(shardID, txn, channel, addToGuild)
+		})
+	}
+
+	err := s.DB.Update(func(txn *badger.Txn) error {
+		// Update the channels object on the guild
+		if channel.Type == discordgo.ChannelTypeGuildText && addToGuild {
+			guild, err := s.Guild(txn, channel.GuildID)
+			if err != nil {
+				return errors.WithMessage(err, "GuildUpdate")
+			}
+
+			found := false
+			for i, v := range guild.Channels {
+				if v.ID == channel.ID {
+					if channel.PermissionOverwrites == nil {
+						channel.PermissionOverwrites = v.PermissionOverwrites
+					}
+
+					guild.Channels[i] = channel
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				guild.Channels = append(guild.Channels, channel)
+			}
+
+			err = s.setKey(shardID, txn, KeyGuild(guild.ID), guild)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Update the global entry
+		return s.setKey(shardID, txn, KeyChannel(channel.ID), channel)
+	})
+
+	return err
+}
+
+// ChannelDelete removes a channel from state
+func (s *State) ChannelDelete(shardID int, txn *badger.Txn, channelID string) error {
+	channel, err := s.Channel(txn, channelID)
+	if err != nil {
+		if err != badger.ErrKeyNotFound {
+			return err
+		}
+
+		// Dosen't exist in our state
+		return nil
+	}
+
+	err = s.DB.Update(func(txn *badger.Txn) error {
+		// Update the channels object on the guild
+		if channel.Type == discordgo.ChannelTypeGuildText {
+			guild, err := s.Guild(txn, channel.GuildID)
+			if err != nil {
+				return errors.WithMessage(err, "GuildUpdate")
+			}
+
+			for i, v := range guild.Channels {
+				if v.ID == channel.ID {
+					guild.Channels = append(guild.Channels[:i], guild.Channels[i+1:]...)
+					break
+				}
+			}
+
+			err = s.setKey(shardID, txn, KeyGuild(guild.ID), guild)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Update the global entry
+		return txn.Delete([]byte(KeyChannel(channelID)))
+	})
+
+	return err
 }

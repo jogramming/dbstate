@@ -1,6 +1,7 @@
 package dbstate
 
 import (
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"testing"
 	// "testing"
@@ -46,5 +47,17 @@ func TestEncodeDecode(t *testing.T) {
 
 	if m.User.ID != dest.User.ID || m.GuildID != dest.GuildID {
 		t.Errorf("Mismatched results: got %#v, Exptected: %#v", dest, m)
+	}
+}
+
+func AssertFatal(t *testing.T, err error, msg ...interface{}) {
+	if err != nil {
+		t.Fatal(fmt.Sprint(msg...) + ": " + err.Error())
+	}
+}
+
+func AssertErr(t *testing.T, err error, msg ...interface{}) {
+	if err != nil {
+		t.Error(fmt.Sprint(msg...) + ": " + err.Error())
 	}
 }
