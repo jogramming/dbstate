@@ -4,6 +4,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/bwmarrin/discordgo"
 	"github.com/dgraph-io/badger"
+	"github.com/pkg/errors"
 	"time"
 )
 
@@ -31,6 +32,8 @@ func (s *State) HandleEvent(session *discordgo.Session, eventInterface interface
 		err = s.HandleReady(session.ShardID, event)
 	case *discordgo.GuildCreate:
 		err = s.GuildCreate(session.ShardID, event.Guild)
+	case *discordgo.GuildUpdate:
+		err = s.GuildUpdate(0, event.Guild)
 	case *discordgo.GuildDelete:
 		err = s.GuildDelete(event.Guild.ID)
 	case *discordgo.GuildMemberAdd:
@@ -95,6 +98,31 @@ func (s *State) GuildCreate(shardID int, g *discordgo.Guild) error {
 	if len(g.Members) > 100 {
 		logrus.Infof("Handled %d members in %s", len(g.Members), time.Since(started))
 	}
+
+	return err
+}
+
+func (s *State) GuildUpdate(shardID int, g *discordgo.Guild) error {
+	err := s.DB.Update(func(txn *badger.Txn) error {
+		current, err := s.Guild(txn, g.ID)
+		if err != nil {
+			return errors.WithMessage(err, "GuildUpdate")
+		}
+
+		current.Name = g.Name
+		current.Icon = g.Icon
+		current.Splash = g.Splash
+		current.OwnerID = g.OwnerID
+		current.Region = g.Region
+		current.AfkTimeout = g.AfkTimeout
+		current.AfkChannelID = g.AfkChannelID
+		current.EmbedEnabled = g.EmbedEnabled
+		current.EmbedChannelID = g.EmbedChannelID
+		current.VerificationLevel = g.VerificationLevel
+		current.DefaultMessageNotifications = g.DefaultMessageNotifications
+
+		return s.setKey(shardID, txn, KeyGuild(g.ID), current)
+	})
 
 	return err
 }
