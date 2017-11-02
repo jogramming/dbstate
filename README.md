@@ -6,11 +6,11 @@ Why have a slower, on disk state than a super fast in memory one? Because as you
 
 The objects in the state are encoded using `encoding/gob`.
 
-*Requirements*: Only supports sessions with SyncEvents enabled, this makes everything a lot more simpler for me.
+**Requirements**: Only supports sessions with SyncEvents enabled, this makes everything a lot more simpler for me.
 
 This is still in development, The status is shown below:
 
-*Status:*
+**Status:**
 
  - [x] Guild tracking and acessors/iterators
  - [x] Member tracking and acessors/iterators 
