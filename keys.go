@@ -2,7 +2,12 @@ package dbstate
 
 const (
 	KeySelfUser = "selfuser"
+
+	KeyGuildsIteratorPrefix = "guilds:"
 )
 
-func KeyUser(userID string) string   { return "users:" + userID }
-func KeyGuild(guildID string) string { return "guilds:" + guildID }
+func KeyUser(userID string) string                        { return "users:" + userID }
+func KeyGuild(guildID string) string                      { return "guilds:" + guildID }
+func KeyGuildMemberCount(guildID string) string           { return "gm_count:" + guildID }
+func KeyGuildMember(guildID, userID string) string        { return "guild_members:" + guildID + ":" + userID }
+func KeyGuildMembersIteratorPrefix(guildID string) string { return "guild_members:" + guildID + ":" }

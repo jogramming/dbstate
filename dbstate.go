@@ -35,7 +35,7 @@ type shardWorker struct {
 // Pass empty path to use "/tmp/dbstate_currentunixtime"
 func NewState(path string, numShards int) (*State, error) {
 	if path == "" {
-		path = fmt.Sprintf("/tmp/dbstate_%d", time.Now().Unix())
+		path = fmt.Sprintf(filepath.Join(os.TempDir(), fmt.Sprintf("dbstate_%d", time.Now().Unix())))
 	}
 
 	err := InitFolder(path)

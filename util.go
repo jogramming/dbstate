@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
+	"reflect"
 )
 
 // setKey is a helper to encode and set a get using the provided shards encoder and buffer
@@ -28,8 +29,10 @@ func (s *State) setKey(shardID int, tx *badger.Txn, key string, val interface{})
 // encodeData encodes the provided value using the provided shards buffer and encoder
 func (s *State) encodeData(shardID int, val interface{}) ([]byte, error) {
 	worker := s.shards[shardID]
+	// Reusing encoders gave issues
+	encoder := gob.NewEncoder(worker.buffer)
 
-	err := worker.encoder.Encode(val)
+	err := encoder.Encode(val)
 	if err != nil {
 		worker.buffer.Reset()
 		return nil, err
@@ -37,6 +40,7 @@ func (s *State) encodeData(shardID int, val interface{}) ([]byte, error) {
 
 	encoded := make([]byte, worker.buffer.Len())
 	_, err = worker.buffer.Read(encoded)
+
 	worker.buffer.Reset()
 	if err != nil {
 		return nil, err

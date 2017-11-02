@@ -3,7 +3,8 @@ package dbstate
 import (
 	"github.com/Sirupsen/logrus"
 	"github.com/bwmarrin/discordgo"
-	// "github.com/dgraph-io/badger"
+	"github.com/dgraph-io/badger"
+	"time"
 )
 
 func (s *State) HandleEvent(session *discordgo.Session, eventInterface interface{}) {
@@ -28,6 +29,16 @@ func (s *State) HandleEvent(session *discordgo.Session, eventInterface interface
 
 		logrus.Infof("Received ready for shard %d", session.ShardID)
 		err = s.HandleReady(session.ShardID, event)
+	case *discordgo.GuildCreate:
+		err = s.GuildCreate(session.ShardID, event.Guild)
+	case *discordgo.GuildDelete:
+		err = s.GuildDelete(event.Guild.ID)
+	case *discordgo.GuildMemberAdd:
+		err = s.MemberAdd(session.ShardID, nil, event.Member, true)
+	case *discordgo.GuildMemberUpdate:
+		err = s.MemberUpdate(session.ShardID, nil, event.Member)
+	case *discordgo.GuildMemberRemove:
+		err = s.MemberRemove(session.ShardID, nil, event.Member.GuildID, event.Member.User.ID, true)
 	}
 
 	if err != nil {
@@ -44,7 +55,7 @@ func (s *State) HandleReady(shardID int, r *discordgo.Ready) error {
 	}
 
 	for _, g := range r.Guilds {
-		err := s.HandleGuildCreate(shardID, g)
+		err := s.GuildCreate(shardID, g)
 		if err != nil {
 			return err
 		}
@@ -53,7 +64,7 @@ func (s *State) HandleReady(shardID int, r *discordgo.Ready) error {
 	return nil
 }
 
-func (s *State) HandleGuildCreate(shardID int, g *discordgo.Guild) error {
+func (s *State) GuildCreate(shardID int, g *discordgo.Guild) error {
 	var gCopy = new(discordgo.Guild)
 	*gCopy = *g
 
@@ -61,8 +72,94 @@ func (s *State) HandleGuildCreate(shardID int, g *discordgo.Guild) error {
 	gCopy.Presences = nil
 	gCopy.VoiceStates = nil
 
-	// Handle the initial load
-	err := s.setKey(shardID, nil, KeyGuild(g.ID), gCopy)
+	started := time.Now()
+	err := s.DB.Update(func(txn *badger.Txn) error {
+		// Handle the initial load
+		err := s.setKey(shardID, txn, KeyGuild(g.ID), gCopy)
+		if err != nil {
+			return err
+		}
+
+		// Load members
+		for _, m := range g.Members {
+			m.GuildID = g.ID
+			err := s.MemberUpdate(shardID, txn, m)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if len(g.Members) > 100 {
+		logrus.Infof("Handled %d members in %s", len(g.Members), time.Since(started))
+	}
 
 	return err
+}
+
+// GuildDelete removes a guild from the state
+func (s *State) GuildDelete(guildID string) error {
+	return s.DB.Update(func(txn *badger.Txn) error {
+		return txn.Delete([]byte(KeyGuild(guildID)))
+	})
+}
+
+// MemberAdd will increment membercount and update the member,
+// if you call this on members already in the count, your membercount will be off
+func (s *State) MemberAdd(shardID int, txn *badger.Txn, m *discordgo.Member, updateCount bool) error {
+	if txn == nil {
+		return s.DB.Update(func(txn *badger.Txn) error {
+			return s.MemberAdd(shardID, txn, m, updateCount)
+		})
+	}
+
+	if updateCount {
+		guild, err := s.Guild(txn, m.GuildID)
+		if err != nil {
+			return err
+		}
+		guild.MemberCount++
+		err = s.setKey(shardID, txn, KeyGuild(m.GuildID), guild)
+		if err != nil {
+			return err
+		}
+	}
+
+	return s.MemberUpdate(shardID, txn, m)
+}
+
+// MemberUpdate updates the current stored state of said member
+func (s *State) MemberUpdate(shardID int, txn *badger.Txn, m *discordgo.Member) error {
+	if txn == nil {
+		return s.DB.Update(func(txn *badger.Txn) error {
+			return s.MemberUpdate(shardID, txn, m)
+		})
+	}
+
+	return s.setKey(shardID, txn, KeyGuildMember(m.GuildID, m.User.ID), m)
+}
+
+// MemberRemove will decrement membercount if "updateCount" and remove the member form state
+func (s *State) MemberRemove(shardID int, txn *badger.Txn, guildID, userID string, updateCount bool) error {
+	if txn == nil {
+		return s.DB.Update(func(txn *badger.Txn) error {
+			return s.MemberRemove(shardID, txn, guildID, userID, updateCount)
+		})
+	}
+
+	if updateCount {
+		guild, err := s.Guild(txn, guildID)
+		if err != nil {
+			return err
+		}
+		guild.MemberCount--
+		err = s.setKey(shardID, txn, KeyGuild(guildID), guild)
+		if err != nil {
+			return err
+		}
+	}
+
+	return txn.Delete([]byte(KeyGuildMember(guildID, userID)))
 }

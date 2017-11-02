@@ -2,10 +2,90 @@ package dbstate
 
 import (
 	"github.com/bwmarrin/discordgo"
+	"github.com/dgraph-io/badger"
 )
 
-func (s *State) Guild(id string) (*discordgo.Guild, error) {
+// Guild retrieves a guild form the state
+// Note that members and presences will not be included in this
+// and will have to be queried seperately
+func (s *State) Guild(txn *badger.Txn, id string) (*discordgo.Guild, error) {
 	var dest *discordgo.Guild
-	err := s.GetKey(nil, KeyGuild(id), &dest)
+	err := s.GetKey(txn, KeyGuild(id), &dest)
 	return dest, err
+}
+
+// IterateGuilds Iterates over all guilds, calling f on them
+// if f returns false, iterating will stop
+func (s *State) IterateGuilds(txn *badger.Txn, f func(g *discordgo.Guild) bool) error {
+	if txn == nil {
+		return s.DB.View(func(txn *badger.Txn) error {
+			return s.IterateGuilds(txn, f)
+		})
+	}
+
+	// Scan over the prefix
+	prefix := []byte(KeyGuildsIteratorPrefix)
+
+	opts := badger.DefaultIteratorOptions
+	it := txn.NewIterator(opts)
+	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+		item := it.Item()
+		v, err := item.Value()
+		if err != nil {
+			return err
+		}
+
+		var dest *discordgo.Guild
+		err = s.DecodeData(v, &dest)
+		if err != nil {
+			return err
+		}
+
+		// Call the callback
+		if !f(dest) {
+			break
+		}
+	}
+	return nil
+}
+
+func (s *State) GuildMember(txn *badger.Txn, guildID, userID string) (*discordgo.Member, error) {
+	var dest discordgo.Member
+	err := s.GetKey(txn, KeyGuildMember(guildID, userID), &dest)
+	return &dest, err
+}
+
+// IterateGuildMembers Iterates over all guild members of provided guildID,
+// calling f on them, if f returns false, iterating will stop
+func (s *State) IterateGuildMembers(txn *badger.Txn, guildID string, f func(m *discordgo.Member) bool) error {
+	if txn == nil {
+		return s.DB.View(func(txn *badger.Txn) error {
+			return s.IterateGuildMembers(txn, guildID, f)
+		})
+	}
+
+	// Scan over the prefix
+	prefix := []byte(KeyGuildMembersIteratorPrefix(guildID))
+
+	opts := badger.DefaultIteratorOptions
+	it := txn.NewIterator(opts)
+	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+		item := it.Item()
+		v, err := item.Value()
+		if err != nil {
+			return err
+		}
+
+		var dest *discordgo.Member
+		err = s.DecodeData(v, &dest)
+		if err != nil {
+			return err
+		}
+
+		// Call the callback
+		if !f(dest) {
+			break
+		}
+	}
+	return nil
 }
