@@ -6,6 +6,8 @@ Why have a slower, on disk state than a super fast in memory one? Because as you
 
 The objects in the state are encoded using `encoding/gob`.
 
+*Requirements*: Only supports sessions with SyncEvents enabled, this makes everything a lot more simpler for me.
+
 This is still in development, The status is shown below:
 
 *Status:*
@@ -13,7 +15,7 @@ This is still in development, The status is shown below:
  - [x] Guild tracking and acessors/iterators
  - [x] Member tracking and acessors/iterators 
  - [ ] Presence tracking and acessors/iterators 
- - [ ] Channel tracking and acessors (should channels be tracked on guild? probably the simplest solution) 
+ - [x] Channel tracking and acessors (channels are currently both tracked on the parent guild and in a global directoryunder the ``channels:` prefix)
  - [ ] Role tracking and acessors (should roles be tracked on guild? probably the simplest solution, although it can get quite big with a lot of channels and roles)
  - [ ] Message tracking and accessors, aswell as a TTL for messages (this TTL feature will hit badger soon apperently)
  - [ ] Voice State tracking and accessors
