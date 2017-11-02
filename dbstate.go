@@ -58,11 +58,20 @@ func NewState(path string, numShards int) (*State, error) {
 
 	shards := make([]*shardWorker, numShards)
 	initWorkers(shards)
+	go gcWorker(db)
 	return &State{
 		DB:        db,
 		numShards: numShards,
 		shards:    shards,
 	}, nil
+}
+
+func gcWorker(db *badger.DB) {
+	for {
+		db.PurgeOlderVersions()
+		db.RunValueLogGC(0.5)
+		time.Sleep(time.Minute)
+	}
 }
 
 func initWorkers(workers []*shardWorker) {
