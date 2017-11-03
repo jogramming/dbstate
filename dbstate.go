@@ -1,5 +1,4 @@
-// dbstate is a package that provides a discord state tracker that uses badger as the underlying database
-// it will not work unless you set SyncEvents on your discordgo session
+// dbstate is a package that provides a discord state tracker that uses badger as the underlying store
 
 package dbstate
 
@@ -86,7 +85,10 @@ func NewState(path string, numShards int, channelSyncMode bool) (*State, error) 
 func gcWorker(db *badger.DB) {
 	for {
 		logrus.Info("starting badger gc")
+
+		// Enabling this made all the keys suddenly stop working, i think i may be doing something wrong in this regard
 		// db.PurgeOlderVersions()
+
 		db.RunValueLogGC(0.5)
 		logrus.Info("Done with badger gc")
 		time.Sleep(time.Minute)
@@ -138,6 +140,7 @@ func flushExistingState(path string) error {
 	}
 
 	// Rename it temporarily because removing isnt instant sometimes on windows?
+	// and this needs to be instant.
 	err := os.Rename(path, path+"_tmp")
 	if err != nil {
 		return err
@@ -151,6 +154,7 @@ func flushExistingState(path string) error {
 	return os.Remove(path + "_tmp")
 }
 
+// rmDir recursively deletes a directory and all it's contents
 func rmDir(path string) error {
 	dir, err := ioutil.ReadDir(path)
 	if err != nil {

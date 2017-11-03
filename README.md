@@ -6,18 +6,27 @@ Why have a slower, on disk state than a super fast in memory one? Because as you
 
 The objects in the state are encoded using `encoding/gob`.
 
-**Requirements**: Only supports sessions with SyncEvents enabled, this makes everything a lot more simpler for me.
+**Notes**: It's reccomended that you run this with syncevents on, to make sure events aren't being handled out of order
 
 This is still in development, The status is shown below:
+
 
 **Status:**
 
  - [x] Guild tracking and acessors/iterators
  - [x] Member tracking and acessors/iterators 
  - [ ] Presence tracking and acessors/iterators 
- - [x] Channel tracking and acessors (channels are currently both tracked on the parent guild and in a global directoryunder the ``channels:` prefix)
+ - [x] Channel tracking and acessors (channels are currently both tracked on the parent guild and in a global directory under the ``channels:` prefix)
  - [x] Role tracking and acessors (should roles be tracked on guild? probably the simplest solution, although it can get quite big with a lot of channels and roles)
- - [ ] Message tracking and accessors, aswell as a TTL for messages (this TTL feature will hit badger soon apperently)
+ - [ ] Message tracking and accessors, aswell as a TTL for messages 
  - [ ] Voice State tracking and accessors
  - [ ] Emoji State tracking and accessors (Put on guild object?)
 
+## Pros and cons
+
+ - Pro/Con: It's on disk, there is higher latency and cpu usage but it wont eat it up all your memory 
+ - Con: Parts are split up, e.g getting a guild dosen't include the members on that guild, that has to be queried seperately
+
+## Benchmarks and performance comparisons to the standard state tracker
+
+TODO (but probably somewhat slower, esp on hdds)

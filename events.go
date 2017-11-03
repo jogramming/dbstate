@@ -79,6 +79,8 @@ func (w *shardWorker) run() {
 	}
 }
 
+// handleEvent does the actual handling of the event, this is not thread safe,
+// if multiple goroutines calls this at the same time, state will get corrupted
 func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 
 	var err error
@@ -126,6 +128,7 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 	return nil
 }
 
+// HandleReady handles the ready event, doing some initial loading
 func (w *shardWorker) HandleReady(r *discordgo.Ready) error {
 
 	// Handle the initial load
@@ -144,6 +147,7 @@ func (w *shardWorker) HandleReady(r *discordgo.Ready) error {
 	return nil
 }
 
+// GuildCreate adds a guild to the state
 func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 	var gCopy = new(discordgo.Guild)
 	*gCopy = *g
