@@ -3,7 +3,6 @@ package dbstate
 import (
 	"bytes"
 	"encoding/gob"
-	"github.com/Sirupsen/logrus"
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
 )
@@ -28,11 +27,6 @@ func (w *shardWorker) setKey(tx *badger.Txn, key string, val interface{}) error 
 
 // encodeData encodes the provided value using the provided shards buffer and encoder
 func (w *shardWorker) encodeData(val interface{}) ([]byte, error) {
-	w.working = true
-	defer func() {
-		w.working = false
-	}()
-
 	// Reusing encoders gave issues
 	encoder := gob.NewEncoder(w.buffer)
 
@@ -41,13 +35,12 @@ func (w *shardWorker) encodeData(val interface{}) ([]byte, error) {
 		w.buffer.Reset()
 		return nil, err
 	}
-	lb := w.buffer.Len()
+
 	encoded := make([]byte, w.buffer.Len())
-	n, err := w.buffer.Read(encoded)
+	_, err = w.buffer.Read(encoded)
 
 	w.buffer.Reset()
 	if err != nil {
-		logrus.Println("Weowzy: ", err, ": ", lb, " ? ", n)
 		return nil, err
 	}
 

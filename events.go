@@ -10,59 +10,57 @@ import (
 )
 
 // HandleEventChannelSynced handles an incoming event
-// you can add this as a handler directly to discordgo or invoke it some other way
 //
 // Use this as opposed to HandleEventMutexSynced if you're okay with other
 // handlers being called before the state has been updated
-func (s *State) HandleEventChannelSynced(session *discordgo.Session, eventInterface interface{}) {
-	if !s.handleEventPreCheck(session, eventInterface) {
-		return
+func (s *State) HandleEventChannelSynced(shardID int, eventInterface interface{}) error {
+	if !s.handleEventPreCheck(shardID, eventInterface) {
+		return nil
 	}
 
 	// Send the event to the proper worker
-	s.shards[session.ShardID].eventChan <- eventInterface
+	s.shards[shardID].eventChan <- eventInterface
+	return nil
 }
 
 // HandleEventMutexSynced handles an incoming event
-// you can add this as a handler directly to discordgo or invoke it some other way
 //
 // Use this ass opposed to HandleEventChannelSynced
 // if you need make sure the state has been updated by the time this returns
-func (s *State) HandleEventMutexSynced(session *discordgo.Session, eventInterface interface{}) {
-	if !s.handleEventPreCheck(session, eventInterface) {
-		return
+func (s *State) HandleEventMutexSynced(shardID int, eventInterface interface{}) error {
+	if !s.handleEventPreCheck(shardID, eventInterface) {
+		return nil
 	}
 
-	w := s.shards[session.ShardID]
+	w := s.shards[shardID]
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	w.handleEvent(eventInterface)
+	return w.handleEvent(eventInterface)
 }
 
 // HandleEventNoSync handles an incoming event
-// you can add this as a handler directly to discordgo or invoke it some other way
 //
 // Use this as opposed to mutex synced and channel synced when you provide your own syncronization
 // if this is called by 2 goroutines at once, this WILL go wrong
-func (s *State) HandleEventNoSync(session *discordgo.Session, eventInterface interface{}) {
-	if !s.handleEventPreCheck(session, eventInterface) {
-		return
+func (s *State) HandleEventNoSync(shardID int, eventInterface interface{}) error {
+	if !s.handleEventPreCheck(shardID, eventInterface) {
+		return nil
 	}
 
 	// Send the event to the proper worker
-	s.shards[session.ShardID].eventChan <- eventInterface
+	return s.shards[shardID].handleEvent(eventInterface)
 }
 
-func (s *State) handleEventPreCheck(session *discordgo.Session, eventInterface interface{}) bool {
+func (s *State) handleEventPreCheck(shardID int, eventInterface interface{}) bool {
 	if _, ok := eventInterface.(*discordgo.Event); ok {
 		// Fast path this since this is sent for every single event
 		return false
 	}
 
-	if session.ShardCount != s.numShards && session.ShardCount > 0 {
+	if s.numShards <= shardID {
 		// If this is true it would panic down the line anyways, make it clear what went wrong
-		panic("Incorrect shard counts passed to NewState, session.ShardCount had different value")
+		panic("ShardID is higher than count passed to state")
 	}
 
 	return true
@@ -72,12 +70,16 @@ func (w *shardWorker) run() {
 	for {
 		select {
 		case event := <-w.eventChan:
-			w.handleEvent(event)
+			err := w.handleEvent(event)
+			if err != nil {
+				// TODO: Add support for custom loggers
+				logrus.WithError(err).Error("Failed handling event")
+			}
 		}
 	}
 }
 
-func (w *shardWorker) handleEvent(eventInterface interface{}) {
+func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 
 	var err error
 
@@ -110,7 +112,7 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) {
 	case *discordgo.GuildRoleDelete:
 		err = w.RoleDelete(nil, event.GuildID, event.RoleID)
 	default:
-		return
+		return nil
 	}
 
 	typ := reflect.Indirect(reflect.ValueOf(eventInterface)).Type()
@@ -118,8 +120,10 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) {
 	// logrus.Infof("Handled event %s", evtName)
 
 	if err != nil {
-		logrus.WithError(err).Error("Error handling event " + evtName)
+		return errors.WithMessage(err, evtName)
 	}
+
+	return nil
 }
 
 func (w *shardWorker) HandleReady(r *discordgo.Ready) error {
@@ -228,7 +232,8 @@ func (w *shardWorker) MemberAdd(txn *badger.Txn, m *discordgo.Member, updateCoun
 	if updateCount {
 		guild, err := w.State.Guild(txn, m.GuildID)
 		if err != nil {
-			return err
+			logrus.Info(m.GuildID)
+			return errors.WithMessage(err, "Guild")
 		}
 		guild.MemberCount++
 		err = w.setKey(txn, KeyGuild(m.GuildID), guild)
@@ -256,12 +261,12 @@ func (w *shardWorker) MemberRemove(txn *badger.Txn, guildID, userID string, upda
 	if updateCount {
 		guild, err := w.State.Guild(txn, guildID)
 		if err != nil {
-			return err
+			return errors.WithMessage(err, "Guild")
 		}
 		guild.MemberCount--
 		err = w.setKey(txn, KeyGuild(guildID), guild)
 		if err != nil {
-			return err
+			return errors.WithMessage(err, "SetGuild")
 		}
 	}
 
@@ -362,10 +367,10 @@ func (w *shardWorker) RoleCreateUpdate(txn *badger.Txn, guildID string, role *di
 		})
 	}
 
-	// Update the channels object on the guild
+	// Update the roles slice on the guild
 	guild, err := w.State.Guild(txn, guildID)
 	if err != nil {
-		return errors.WithMessage(err, "RoleCreateUpdate")
+		return errors.WithMessage(err, "Guild")
 	}
 
 	found := false
@@ -399,7 +404,7 @@ func (w *shardWorker) RoleDelete(txn *badger.Txn, guildID, roleID string) error 
 
 	guild, err := w.State.Guild(txn, guildID)
 	if err != nil {
-		return err
+		return errors.WithMessage(err, "Guild")
 	}
 
 	for i, v := range guild.Roles {
@@ -411,7 +416,7 @@ func (w *shardWorker) RoleDelete(txn *badger.Txn, guildID, roleID string) error 
 
 	err = w.setKey(txn, KeyGuild(guild.ID), guild)
 	if err != nil {
-		return err
+		return errors.WithMessage(err, "SetGuild")
 	}
 
 	return nil

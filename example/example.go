@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 )
 
 var (
@@ -29,7 +30,9 @@ func main() {
 	}
 	State = state
 
-	manager.AddHandler(state.HandleEventChannelSynced)
+	manager.AddHandler(func(session *discordgo.Session, evt interface{}) {
+		state.HandleEventChannelSynced(session.ShardID, evt)
+	})
 
 	manager.SessionFunc = func(token string) (*discordgo.Session, error) {
 		session, err := discordgo.New(token)
@@ -38,6 +41,7 @@ func main() {
 		}
 		session.StateEnabled = false
 		session.SyncEvents = true
+		// session.LogLevel = discordgo.LogDebug
 		return session, nil
 	}
 
@@ -48,6 +52,7 @@ func main() {
 
 	log.Println("Running....")
 	http.HandleFunc("/gs", HandleGuildSize)
+	http.HandleFunc("/g", HanldeIterateGuilds)
 	log.Fatal(http.ListenAndServe(":7441", nil))
 }
 
@@ -59,7 +64,7 @@ func HandleGuildSize(w http.ResponseWriter, r *http.Request) {
 
 	g, err := State.Guild(nil, gId)
 	if err != nil {
-		w.Write([]byte(err.Error()))
+		w.Write([]byte(err.Error() + ": " + gId))
 		return
 	}
 
@@ -81,4 +86,14 @@ func HandleGuildSize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Write([]byte(fmt.Sprintf("Size of guild %s: %d bytes", g.Name, len(encoded))))
+}
+
+func HanldeIterateGuilds(w http.ResponseWriter, r *http.Request) {
+	count := int64(0)
+	State.IterateGuilds(nil, func(g *discordgo.Guild) bool {
+		w.Write([]byte(g.ID + ": " + g.Name + "\n"))
+		count++
+		return true
+	})
+	w.Write([]byte("Total: " + strconv.FormatInt(count, 10) + "\n"))
 }

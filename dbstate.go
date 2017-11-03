@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"github.com/Sirupsen/logrus"
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
 	"io/ioutil"
@@ -84,8 +85,10 @@ func NewState(path string, numShards int, channelSyncMode bool) (*State, error) 
 
 func gcWorker(db *badger.DB) {
 	for {
-		db.PurgeOlderVersions()
+		logrus.Info("starting badger gc")
+		// db.PurgeOlderVersions()
 		db.RunValueLogGC(0.5)
+		logrus.Info("Done with badger gc")
 		time.Sleep(time.Minute)
 	}
 }

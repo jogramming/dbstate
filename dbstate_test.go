@@ -9,6 +9,7 @@ import (
 
 var (
 	testState   *State
+	testWorker  *shardWorker
 	mockSession = &discordgo.Session{
 		ShardCount: 1,
 	}
@@ -19,10 +20,12 @@ func init() {
 }
 
 func SetupTestState() *State {
-	state, err := NewState("testing_db", 1)
+	state, err := NewState("testing_db", 1, false)
 	if err != nil {
 		panic(err)
 	}
+
+	testWorker = state.shards[0]
 
 	return state
 }
@@ -33,7 +36,7 @@ func TestEncodeDecode(t *testing.T) {
 		GuildID: "321",
 	}
 
-	encoded, err := testState.encodeData(0, m)
+	encoded, err := testWorker.encodeData(m)
 	if err != nil {
 		t.Error("Enc: ", err)
 		return

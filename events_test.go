@@ -13,7 +13,7 @@ func TestGuilds(t *testing.T) {
 		MemberCount: 10,
 	}
 
-	err := testState.GuildCreate(0, g)
+	err := testWorker.GuildCreate(g)
 	AssertFatal(t, err, "failed handling guild create")
 
 	g2, err := testState.Guild(nil, "123")
@@ -35,7 +35,7 @@ func TestGuilds(t *testing.T) {
 		t.Errorf("unexpted guild count! Got: %d, Expected: 1", cnt)
 	}
 
-	err = testState.GuildDelete("123")
+	err = testWorker.GuildDelete("123")
 	AssertFatal(t, err, "failed removing guild")
 
 	if _, err := testState.Guild(nil, "123"); err == nil {
@@ -51,7 +51,7 @@ func TestGuildMembers(t *testing.T) {
 		Roles:   []string{"123", "321"},
 	}
 
-	err := testState.MemberUpdate(0, nil, m)
+	err := testWorker.MemberUpdate(nil, m)
 	AssertFatal(t, err, "failed handling member update")
 
 	m2, err := testState.GuildMember(nil, "321", "123")
@@ -79,7 +79,7 @@ func TestGuildMembers(t *testing.T) {
 		t.Errorf("unexpted member count! Got: %d, Expected: 1", cnt)
 	}
 
-	err = testState.MemberRemove(0, nil, "321", "123", false)
+	err = testWorker.MemberRemove(nil, "321", "123", false)
 	AssertFatal(t, err, "failed removing member")
 
 	if _, err = testState.GuildMember(nil, "321", "123"); err == nil {
@@ -97,8 +97,8 @@ func TestGuildChannels(t *testing.T) {
 		ID: "1",
 	}
 
-	AssertFatal(t, testState.GuildCreate(0, g), "failed creating guild")
-	AssertFatal(t, testState.ChannelCreateUpdate(0, nil, c, true), "failed creating channel")
+	AssertFatal(t, testWorker.GuildCreate(g), "failed creating guild")
+	AssertFatal(t, testWorker.ChannelCreateUpdate(nil, c, true), "failed creating channel")
 
 	fetched, err := testState.Channel(nil, "2")
 	AssertFatal(t, err, "failed retrieving channel")
@@ -107,9 +107,9 @@ func TestGuildChannels(t *testing.T) {
 		t.Errorf("mismatched results, got %#v, expected %#v", fetched, c)
 	}
 
-	AssertFatal(t, testState.ChannelDelete(0, nil, "2"), "failed deleting channel")
+	AssertFatal(t, testWorker.ChannelDelete(nil, "2"), "failed deleting channel")
 	if _, err = testState.Channel(nil, "2"); err == nil {
 		t.Fatal("channel still there after being removed")
 	}
-	AssertErr(t, testState.GuildDelete("1"), "failed removing guild")
+	AssertErr(t, testWorker.GuildDelete("1"), "failed removing guild")
 }
