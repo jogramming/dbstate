@@ -1,5 +1,5 @@
 // dbstate is a package that provides a discord state tracker that uses badger as the underlying database
-// it is reccommended that you run this with synced events on in your discordgo session, otherwise things may happen out of order
+// it will not work unless you set SyncEvents on your discordgo session
 
 package dbstate
 
@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -25,20 +26,32 @@ type State struct {
 }
 
 type shardWorker struct {
+	State *State
+
 	shardID int
 	buffer  *bytes.Buffer
 	encoder *gob.Encoder
+	working bool
+
+	// Used for the channel sync mode
+	eventChan chan interface{}
+
+	// Used for the mutex sync mode
+	mu *sync.Mutex
 }
 
 // Creates a new state in path folder
 // Warning: path will be deleted to flush existing state
 // Pass empty path to use "/tmp/dbstate_currentunixtime"
-func NewState(path string, numShards int) (*State, error) {
+//
+// channelSyncMode: if this is set it will also spin up the event channel receivers per shard
+// set this is you're gonna use the channel sync mode (see State.HandleEvent*)
+func NewState(path string, numShards int, channelSyncMode bool) (*State, error) {
 	if path == "" {
 		path = fmt.Sprintf(filepath.Join(os.TempDir(), fmt.Sprintf("dbstate_%d", time.Now().Unix())))
 	}
 
-	err := InitFolder(path)
+	err := initFolder(path)
 	if err != nil {
 		return nil, errors.WithMessage(err, "InitFolder")
 	}
@@ -57,13 +70,16 @@ func NewState(path string, numShards int) (*State, error) {
 	}
 
 	shards := make([]*shardWorker, numShards)
-	initWorkers(shards)
 	go gcWorker(db)
-	return &State{
+
+	s := &State{
 		DB:        db,
 		numShards: numShards,
 		shards:    shards,
-	}, nil
+	}
+
+	s.initWorkers(shards, channelSyncMode)
+	return s, nil
 }
 
 func gcWorker(db *badger.DB) {
@@ -74,18 +90,24 @@ func gcWorker(db *badger.DB) {
 	}
 }
 
-func initWorkers(workers []*shardWorker) {
+func (s *State) initWorkers(workers []*shardWorker, run bool) {
 	for i, _ := range workers {
 		workers[i] = &shardWorker{
-			shardID: i,
-			buffer:  new(bytes.Buffer),
+			State:     s,
+			shardID:   i,
+			buffer:    new(bytes.Buffer),
+			eventChan: make(chan interface{}, 10),
 		}
 
 		workers[i].encoder = gob.NewEncoder(workers[i].buffer)
+
+		if run {
+			go workers[i].run()
+		}
 	}
 }
 
-func InitFolder(path string) error {
+func initFolder(path string) error {
 	if path == "" {
 		return errors.New("No path specified")
 	}
@@ -99,14 +121,11 @@ func InitFolder(path string) error {
 		if err != nil {
 			return err
 		}
+	} else if !os.IsNotExist(err) {
+		return err
 	}
 
-	err := rmDir(path)
-	if err != nil && !os.IsNotExist(err) {
-		return errors.WithMessage(err, "os.RemoveAll")
-	}
-
-	err = os.MkdirAll(path, os.ModeDir|os.ModePerm)
+	err := os.MkdirAll(path, os.ModeDir|os.ModePerm)
 	return errors.WithMessage(err, "Failed creating db folder")
 }
 

@@ -3,20 +3,21 @@ package dbstate
 import (
 	"bytes"
 	"encoding/gob"
+	"github.com/Sirupsen/logrus"
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
 )
 
 // setKey is a helper to encode and set a get using the provided shards encoder and buffer
 // If tx is nil, will create a new transaction
-func (s *State) setKey(shardID int, tx *badger.Txn, key string, val interface{}) error {
+func (w *shardWorker) setKey(tx *badger.Txn, key string, val interface{}) error {
 	if tx == nil {
-		return s.DB.Update(func(txn *badger.Txn) error {
-			return s.setKey(shardID, txn, key, val)
+		return w.State.DB.Update(func(txn *badger.Txn) error {
+			return w.setKey(txn, key, val)
 		})
 	}
 
-	encoded, err := s.encodeData(shardID, val)
+	encoded, err := w.encodeData(val)
 	if err != nil {
 		return errors.WithMessage(err, "EncodeData")
 	}
@@ -26,22 +27,27 @@ func (s *State) setKey(shardID int, tx *badger.Txn, key string, val interface{})
 }
 
 // encodeData encodes the provided value using the provided shards buffer and encoder
-func (s *State) encodeData(shardID int, val interface{}) ([]byte, error) {
-	worker := s.shards[shardID]
+func (w *shardWorker) encodeData(val interface{}) ([]byte, error) {
+	w.working = true
+	defer func() {
+		w.working = false
+	}()
+
 	// Reusing encoders gave issues
-	encoder := gob.NewEncoder(worker.buffer)
+	encoder := gob.NewEncoder(w.buffer)
 
 	err := encoder.Encode(val)
 	if err != nil {
-		worker.buffer.Reset()
+		w.buffer.Reset()
 		return nil, err
 	}
+	lb := w.buffer.Len()
+	encoded := make([]byte, w.buffer.Len())
+	n, err := w.buffer.Read(encoded)
 
-	encoded := make([]byte, worker.buffer.Len())
-	_, err = worker.buffer.Read(encoded)
-
-	worker.buffer.Reset()
+	w.buffer.Reset()
 	if err != nil {
+		logrus.Println("Weowzy: ", err, ": ", lb, " ? ", n)
 		return nil, err
 	}
 

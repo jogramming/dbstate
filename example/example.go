@@ -23,13 +23,13 @@ func main() {
 		log.Fatal("Error retrieving reccomended shard count: ", err)
 	}
 
-	state, err := dbstate.NewState("", reccomended)
+	state, err := dbstate.NewState("", reccomended, true)
 	if err != nil {
 		log.Fatal("Failed initializing state: ", err)
 	}
 	State = state
 
-	manager.AddHandler(state.HandleEvent)
+	manager.AddHandler(state.HandleEventChannelSynced)
 
 	manager.SessionFunc = func(token string) (*discordgo.Session, error) {
 		session, err := discordgo.New(token)

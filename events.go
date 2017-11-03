@@ -9,75 +9,129 @@ import (
 	"time"
 )
 
-func (s *State) HandleEvent(session *discordgo.Session, eventInterface interface{}) {
-	if _, ok := eventInterface.(*discordgo.Event); ok {
-		// Fast path this since this is sent for every single event
+// HandleEventChannelSynced handles an incoming event
+// you can add this as a handler directly to discordgo or invoke it some other way
+//
+// Use this as opposed to HandleEventMutexSynced if you're okay with other
+// handlers being called before the state has been updated
+func (s *State) HandleEventChannelSynced(session *discordgo.Session, eventInterface interface{}) {
+	if !s.handleEventPreCheck(session, eventInterface) {
 		return
 	}
+
+	// Send the event to the proper worker
+	s.shards[session.ShardID].eventChan <- eventInterface
+}
+
+// HandleEventMutexSynced handles an incoming event
+// you can add this as a handler directly to discordgo or invoke it some other way
+//
+// Use this ass opposed to HandleEventChannelSynced
+// if you need make sure the state has been updated by the time this returns
+func (s *State) HandleEventMutexSynced(session *discordgo.Session, eventInterface interface{}) {
+	if !s.handleEventPreCheck(session, eventInterface) {
+		return
+	}
+
+	w := s.shards[session.ShardID]
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.handleEvent(eventInterface)
+}
+
+// HandleEventNoSync handles an incoming event
+// you can add this as a handler directly to discordgo or invoke it some other way
+//
+// Use this as opposed to mutex synced and channel synced when you provide your own syncronization
+// if this is called by 2 goroutines at once, this WILL go wrong
+func (s *State) HandleEventNoSync(session *discordgo.Session, eventInterface interface{}) {
+	if !s.handleEventPreCheck(session, eventInterface) {
+		return
+	}
+
+	// Send the event to the proper worker
+	s.shards[session.ShardID].eventChan <- eventInterface
+}
+
+func (s *State) handleEventPreCheck(session *discordgo.Session, eventInterface interface{}) bool {
+	if _, ok := eventInterface.(*discordgo.Event); ok {
+		// Fast path this since this is sent for every single event
+		return false
+	}
+
+	if session.ShardCount != s.numShards && session.ShardCount > 0 {
+		// If this is true it would panic down the line anyways, make it clear what went wrong
+		panic("Incorrect shard counts passed to NewState, session.ShardCount had different value")
+	}
+
+	return true
+}
+
+func (w *shardWorker) run() {
+	for {
+		select {
+		case event := <-w.eventChan:
+			w.handleEvent(event)
+		}
+	}
+}
+
+func (w *shardWorker) handleEvent(eventInterface interface{}) {
 
 	var err error
 
 	switch event := eventInterface.(type) {
 	case *discordgo.Ready:
-		if !session.SyncEvents {
-			// We rely on only 1 events per shard being handled at a time to make reusing buffers without locks easier
-			panic("Session.SyncEvents not set, this mode is unsupported.")
-		}
-
-		if session.ShardCount != s.numShards && session.ShardCount > 0 {
-			// If this is true it would panic down the line anyways, make it clear what went wrong
-			panic("Incorrect shard counts passed to NewState, session.ShardCount had different value")
-		}
-
-		logrus.Infof("Received ready for shard %d", session.ShardID)
-		err = s.HandleReady(session.ShardID, event)
+		logrus.Infof("Received ready for shard %d", w.shardID)
+		err = w.HandleReady(event)
 	case *discordgo.GuildCreate:
-		err = s.GuildCreate(session.ShardID, event.Guild)
+		err = w.GuildCreate(event.Guild)
 	case *discordgo.GuildUpdate:
-		err = s.GuildUpdate(0, event.Guild)
+		err = w.GuildUpdate(event.Guild)
 	case *discordgo.GuildDelete:
-		err = s.GuildDelete(event.Guild.ID)
+		err = w.GuildDelete(event.Guild.ID)
 	case *discordgo.GuildMemberAdd:
-		err = s.MemberAdd(session.ShardID, nil, event.Member, true)
+		err = w.MemberAdd(nil, event.Member, true)
 	case *discordgo.GuildMemberUpdate:
-		err = s.MemberUpdate(session.ShardID, nil, event.Member)
+		err = w.MemberUpdate(nil, event.Member)
 	case *discordgo.GuildMemberRemove:
-		err = s.MemberRemove(session.ShardID, nil, event.Member.GuildID, event.Member.User.ID, true)
+		err = w.MemberRemove(nil, event.Member.GuildID, event.Member.User.ID, true)
 	case *discordgo.ChannelCreate:
-		err = s.ChannelCreateUpdate(session.ShardID, nil, event.Channel, true)
+		err = w.ChannelCreateUpdate(nil, event.Channel, true)
 	case *discordgo.ChannelUpdate:
-		err = s.ChannelCreateUpdate(session.ShardID, nil, event.Channel, true)
+		err = w.ChannelCreateUpdate(nil, event.Channel, true)
 	case *discordgo.ChannelDelete:
-		err = s.ChannelDelete(session.ShardID, nil, event.Channel.ID)
+		err = w.ChannelDelete(nil, event.Channel.ID)
 	case *discordgo.GuildRoleCreate:
-		err = s.RoleCreateUpdate(session.ShardID, nil, event.GuildID, event.Role)
+		err = w.RoleCreateUpdate(nil, event.GuildID, event.Role)
 	case *discordgo.GuildRoleUpdate:
-		err = s.RoleCreateUpdate(session.ShardID, nil, event.GuildID, event.Role)
+		err = w.RoleCreateUpdate(nil, event.GuildID, event.Role)
 	case *discordgo.GuildRoleDelete:
-		err = s.RoleDelete(session.ShardID, nil, event.GuildID, event.RoleID)
+		err = w.RoleDelete(nil, event.GuildID, event.RoleID)
 	default:
 		return
 	}
 
 	typ := reflect.Indirect(reflect.ValueOf(eventInterface)).Type()
 	evtName := typ.Name()
-	logrus.Infof("Handled event %s", evtName)
+	// logrus.Infof("Handled event %s", evtName)
 
 	if err != nil {
 		logrus.WithError(err).Error("Error handling event " + evtName)
 	}
 }
 
-func (s *State) HandleReady(shardID int, r *discordgo.Ready) error {
+func (w *shardWorker) HandleReady(r *discordgo.Ready) error {
 
 	// Handle the initial load
-	err := s.setKey(shardID, nil, KeySelfUser, r.User)
+	err := w.setKey(nil, KeySelfUser, r.User)
 	if err != nil {
 		return err
 	}
 
 	for _, g := range r.Guilds {
-		err := s.GuildCreate(shardID, g)
+		err := w.GuildCreate(g)
 		if err != nil {
 			return err
 		}
@@ -86,7 +140,7 @@ func (s *State) HandleReady(shardID int, r *discordgo.Ready) error {
 	return nil
 }
 
-func (s *State) GuildCreate(shardID int, g *discordgo.Guild) error {
+func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 	var gCopy = new(discordgo.Guild)
 	*gCopy = *g
 
@@ -95,9 +149,9 @@ func (s *State) GuildCreate(shardID int, g *discordgo.Guild) error {
 	gCopy.VoiceStates = nil
 
 	started := time.Now()
-	err := s.DB.Update(func(txn *badger.Txn) error {
+	err := w.State.DB.Update(func(txn *badger.Txn) error {
 		// Handle the initial load
-		err := s.setKey(shardID, txn, KeyGuild(g.ID), gCopy)
+		err := w.setKey(txn, KeyGuild(g.ID), gCopy)
 		if err != nil {
 			return err
 		}
@@ -105,7 +159,7 @@ func (s *State) GuildCreate(shardID int, g *discordgo.Guild) error {
 		// Load members
 		for _, m := range g.Members {
 			m.GuildID = g.ID
-			err := s.MemberUpdate(shardID, txn, m)
+			err := w.MemberUpdate(txn, m)
 			if err != nil {
 				return err
 			}
@@ -114,7 +168,7 @@ func (s *State) GuildCreate(shardID int, g *discordgo.Guild) error {
 		// Load channels to global registry
 		for _, c := range g.Channels {
 			c.GuildID = g.ID
-			err := s.ChannelCreateUpdate(0, txn, c, false)
+			err := w.ChannelCreateUpdate(txn, c, false)
 			if err != nil {
 				return err
 			}
@@ -130,9 +184,9 @@ func (s *State) GuildCreate(shardID int, g *discordgo.Guild) error {
 	return err
 }
 
-func (s *State) GuildUpdate(shardID int, g *discordgo.Guild) error {
-	err := s.DB.Update(func(txn *badger.Txn) error {
-		current, err := s.Guild(txn, g.ID)
+func (w *shardWorker) GuildUpdate(g *discordgo.Guild) error {
+	err := w.State.DB.Update(func(txn *badger.Txn) error {
+		current, err := w.State.Guild(txn, g.ID)
 		if err != nil {
 			return errors.WithMessage(err, "GuildUpdate")
 		}
@@ -149,63 +203,63 @@ func (s *State) GuildUpdate(shardID int, g *discordgo.Guild) error {
 		current.VerificationLevel = g.VerificationLevel
 		current.DefaultMessageNotifications = g.DefaultMessageNotifications
 
-		return s.setKey(shardID, txn, KeyGuild(g.ID), current)
+		return w.setKey(txn, KeyGuild(g.ID), current)
 	})
 
 	return err
 }
 
 // GuildDelete removes a guild from the state
-func (s *State) GuildDelete(guildID string) error {
-	return s.DB.Update(func(txn *badger.Txn) error {
+func (w *shardWorker) GuildDelete(guildID string) error {
+	return w.State.DB.Update(func(txn *badger.Txn) error {
 		return txn.Delete([]byte(KeyGuild(guildID)))
 	})
 }
 
 // MemberAdd will increment membercount and update the member,
 // if you call this on members already in the count, your membercount will be off
-func (s *State) MemberAdd(shardID int, txn *badger.Txn, m *discordgo.Member, updateCount bool) error {
+func (w *shardWorker) MemberAdd(txn *badger.Txn, m *discordgo.Member, updateCount bool) error {
 	if txn == nil {
-		return s.DB.Update(func(txn *badger.Txn) error {
-			return s.MemberAdd(shardID, txn, m, updateCount)
+		return w.State.DB.Update(func(txn *badger.Txn) error {
+			return w.MemberAdd(txn, m, updateCount)
 		})
 	}
 
 	if updateCount {
-		guild, err := s.Guild(txn, m.GuildID)
+		guild, err := w.State.Guild(txn, m.GuildID)
 		if err != nil {
 			return err
 		}
 		guild.MemberCount++
-		err = s.setKey(shardID, txn, KeyGuild(m.GuildID), guild)
+		err = w.setKey(txn, KeyGuild(m.GuildID), guild)
 		if err != nil {
 			return err
 		}
 	}
 
-	return s.MemberUpdate(shardID, txn, m)
+	return w.MemberUpdate(txn, m)
 }
 
 // MemberUpdate updates the current stored state of said member
-func (s *State) MemberUpdate(shardID int, txn *badger.Txn, m *discordgo.Member) error {
-	return s.setKey(shardID, txn, KeyGuildMember(m.GuildID, m.User.ID), m)
+func (w *shardWorker) MemberUpdate(txn *badger.Txn, m *discordgo.Member) error {
+	return w.setKey(txn, KeyGuildMember(m.GuildID, m.User.ID), m)
 }
 
 // MemberRemove will decrement membercount if "updateCount" and remove the member form state
-func (s *State) MemberRemove(shardID int, txn *badger.Txn, guildID, userID string, updateCount bool) error {
+func (w *shardWorker) MemberRemove(txn *badger.Txn, guildID, userID string, updateCount bool) error {
 	if txn == nil {
-		return s.DB.Update(func(txn *badger.Txn) error {
-			return s.MemberRemove(shardID, txn, guildID, userID, updateCount)
+		return w.State.DB.Update(func(txn *badger.Txn) error {
+			return w.MemberRemove(txn, guildID, userID, updateCount)
 		})
 	}
 
 	if updateCount {
-		guild, err := s.Guild(txn, guildID)
+		guild, err := w.State.Guild(txn, guildID)
 		if err != nil {
 			return err
 		}
 		guild.MemberCount--
-		err = s.setKey(shardID, txn, KeyGuild(guildID), guild)
+		err = w.setKey(txn, KeyGuild(guildID), guild)
 		if err != nil {
 			return err
 		}
@@ -216,16 +270,16 @@ func (s *State) MemberRemove(shardID int, txn *badger.Txn, guildID, userID strin
 
 // ChannelCreateUpdate creates or updates a channel in the state
 // if addtoguild is set, it will add and update it on the actual guild object aswell
-func (s *State) ChannelCreateUpdate(shardID int, txn *badger.Txn, channel *discordgo.Channel, addToGuild bool) error {
+func (w *shardWorker) ChannelCreateUpdate(txn *badger.Txn, channel *discordgo.Channel, addToGuild bool) error {
 	if txn == nil {
-		return s.DB.Update(func(txn *badger.Txn) error {
-			return s.ChannelCreateUpdate(shardID, txn, channel, addToGuild)
+		return w.State.DB.Update(func(txn *badger.Txn) error {
+			return w.ChannelCreateUpdate(txn, channel, addToGuild)
 		})
 	}
 
 	// Update the channels object on the guild
 	if channel.Type == discordgo.ChannelTypeGuildText && addToGuild {
-		guild, err := s.Guild(txn, channel.GuildID)
+		guild, err := w.State.Guild(txn, channel.GuildID)
 		if err != nil {
 			return errors.WithMessage(err, "ChannelUpdate")
 		}
@@ -247,25 +301,25 @@ func (s *State) ChannelCreateUpdate(shardID int, txn *badger.Txn, channel *disco
 			guild.Channels = append(guild.Channels, channel)
 		}
 
-		err = s.setKey(shardID, txn, KeyGuild(guild.ID), guild)
+		err = w.setKey(txn, KeyGuild(guild.ID), guild)
 		if err != nil {
 			return err
 		}
 	}
 
 	// Update the global entry
-	return s.setKey(shardID, txn, KeyChannel(channel.ID), channel)
+	return w.setKey(txn, KeyChannel(channel.ID), channel)
 }
 
 // ChannelDelete removes a channel from state
-func (s *State) ChannelDelete(shardID int, txn *badger.Txn, channelID string) error {
+func (w *shardWorker) ChannelDelete(txn *badger.Txn, channelID string) error {
 	if txn == nil {
-		return s.DB.Update(func(txn *badger.Txn) error {
-			return s.ChannelDelete(shardID, txn, channelID)
+		return w.State.DB.Update(func(txn *badger.Txn) error {
+			return w.ChannelDelete(txn, channelID)
 		})
 	}
 
-	channel, err := s.Channel(txn, channelID)
+	channel, err := w.State.Channel(txn, channelID)
 	if err != nil {
 		if err != badger.ErrKeyNotFound {
 			return err
@@ -277,7 +331,7 @@ func (s *State) ChannelDelete(shardID int, txn *badger.Txn, channelID string) er
 
 	// Update the channels object on the guild
 	if channel.Type == discordgo.ChannelTypeGuildText {
-		guild, err := s.Guild(txn, channel.GuildID)
+		guild, err := w.State.Guild(txn, channel.GuildID)
 		if err != nil {
 			return errors.WithMessage(err, "ChannelCreateUpdate")
 		}
@@ -289,7 +343,7 @@ func (s *State) ChannelDelete(shardID int, txn *badger.Txn, channelID string) er
 			}
 		}
 
-		err = s.setKey(shardID, txn, KeyGuild(guild.ID), guild)
+		err = w.setKey(txn, KeyGuild(guild.ID), guild)
 		if err != nil {
 			return err
 		}
@@ -301,15 +355,15 @@ func (s *State) ChannelDelete(shardID int, txn *badger.Txn, channelID string) er
 
 // RoleCreateUpdate creates or updates a role in the state
 // These roles are actually on the guild at the moment
-func (s *State) RoleCreateUpdate(shardID int, txn *badger.Txn, guildID string, role *discordgo.Role) error {
+func (w *shardWorker) RoleCreateUpdate(txn *badger.Txn, guildID string, role *discordgo.Role) error {
 	if txn == nil {
-		return s.DB.Update(func(txn *badger.Txn) error {
-			return s.RoleCreateUpdate(shardID, txn, guildID, role)
+		return w.State.DB.Update(func(txn *badger.Txn) error {
+			return w.RoleCreateUpdate(txn, guildID, role)
 		})
 	}
 
 	// Update the channels object on the guild
-	guild, err := s.Guild(txn, guildID)
+	guild, err := w.State.Guild(txn, guildID)
 	if err != nil {
 		return errors.WithMessage(err, "RoleCreateUpdate")
 	}
@@ -327,7 +381,7 @@ func (s *State) RoleCreateUpdate(shardID int, txn *badger.Txn, guildID string, r
 		guild.Roles = append(guild.Roles, role)
 	}
 
-	err = s.setKey(shardID, txn, KeyGuild(guild.ID), guild)
+	err = w.setKey(txn, KeyGuild(guild.ID), guild)
 	if err != nil {
 		return err
 	}
@@ -336,14 +390,14 @@ func (s *State) RoleCreateUpdate(shardID int, txn *badger.Txn, guildID string, r
 }
 
 // RoleDelete removes a role from state
-func (s *State) RoleDelete(shardID int, txn *badger.Txn, guildID, roleID string) error {
+func (w *shardWorker) RoleDelete(txn *badger.Txn, guildID, roleID string) error {
 	if txn == nil {
-		return s.DB.Update(func(txn *badger.Txn) error {
-			return s.RoleDelete(shardID, txn, guildID, roleID)
+		return w.State.DB.Update(func(txn *badger.Txn) error {
+			return w.RoleDelete(txn, guildID, roleID)
 		})
 	}
 
-	guild, err := s.Guild(txn, guildID)
+	guild, err := w.State.Guild(txn, guildID)
 	if err != nil {
 		return err
 	}
@@ -355,7 +409,7 @@ func (s *State) RoleDelete(shardID int, txn *badger.Txn, guildID, roleID string)
 		}
 	}
 
-	err = s.setKey(shardID, txn, KeyGuild(guild.ID), guild)
+	err = w.setKey(txn, KeyGuild(guild.ID), guild)
 	if err != nil {
 		return err
 	}
