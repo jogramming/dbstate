@@ -131,6 +131,10 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 // HandleReady handles the ready event, doing some initial loading
 func (w *shardWorker) HandleReady(r *discordgo.Ready) error {
 
+	w.State.memoryState.Lock()
+	w.State.memoryState.User = r.User
+	w.State.memoryState.Unlock()
+
 	// Handle the initial load
 	err := w.setKey(nil, KeySelfUser, r.User)
 	if err != nil {

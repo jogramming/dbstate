@@ -5,6 +5,16 @@ import (
 	"github.com/dgraph-io/badger"
 )
 
+// SelfUser returns the current user from the ready payload,
+// if the ready payload from atleast 1 shard hasn't been received this will return nil
+func (s *State) SelfUser() *discordgo.User {
+	s.memoryState.RLock()
+	u := s.memoryState.User
+	s.memoryState.RUnlock()
+
+	return u
+}
+
 // Guild retrieves a guild form the state
 // Note that members and presences will not be included in this
 // and will have to be queried seperately
@@ -90,6 +100,7 @@ func (s *State) IterateGuildMembers(txn *badger.Txn, guildID string, f func(m *d
 	return nil
 }
 
+// Channel returns a channel from the state
 func (s *State) Channel(txn *badger.Txn, channelID string) (*discordgo.Channel, error) {
 	var dest discordgo.Channel
 	err := s.GetKey(txn, KeyChannel(channelID), &dest)

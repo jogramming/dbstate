@@ -7,6 +7,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"github.com/bwmarrin/discordgo"
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
 	"io/ioutil"
@@ -20,6 +21,8 @@ type State struct {
 	DB *badger.DB
 
 	numShards int
+
+	memoryState *memoryState
 
 	// Reuse the buffers used for encoding values into state
 	shards []*shardWorker
@@ -38,6 +41,13 @@ type shardWorker struct {
 
 	// Used for the mutex sync mode
 	mu *sync.Mutex
+}
+
+// Small in memory state that holds a small amount of information
+type memoryState struct {
+	sync.RWMutex
+
+	User *discordgo.User
 }
 
 // Creates a new state in path folder
@@ -73,9 +83,10 @@ func NewState(path string, numShards int, channelSyncMode bool) (*State, error) 
 	go gcWorker(db)
 
 	s := &State{
-		DB:        db,
-		numShards: numShards,
-		shards:    shards,
+		DB:          db,
+		numShards:   numShards,
+		shards:      shards,
+		memoryState: &memoryState{},
 	}
 
 	s.initWorkers(shards, channelSyncMode)
