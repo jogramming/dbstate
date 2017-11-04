@@ -20,6 +20,10 @@ import (
 type State struct {
 	DB *badger.DB
 
+	// Configuration options, set these before starting to feed it with events
+	// unless you want race conditions
+	MessageTTL time.Duration
+
 	numShards int
 
 	memoryState *memoryState
@@ -87,6 +91,7 @@ func NewState(path string, numShards int, channelSyncMode bool) (*State, error) 
 		numShards:   numShards,
 		shards:      shards,
 		memoryState: &memoryState{},
+		MessageTTL:  time.Hour,
 	}
 
 	s.initWorkers(shards, channelSyncMode)

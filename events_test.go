@@ -154,3 +154,30 @@ func TestGuildRoles(t *testing.T) {
 
 	AssertErr(t, testWorker.GuildDelete(g.ID), "failed removing guild")
 }
+
+func TestChannelMessages(t *testing.T) {
+	m := &discordgo.Message{
+		ID:        "3",
+		ChannelID: "2",
+		Content:   "Hello there",
+		Author: &discordgo.User{
+			ID:       "5",
+			Username: "bob",
+		},
+	}
+
+	AssertFatal(t, testWorker.MessageCreateUpdate(nil, m), "failed creating message")
+
+	fetched, err := testState.ChannelMessage(nil, m.ChannelID, m.ID)
+	AssertFatal(t, err, "failed retrieving message")
+
+	if fetched.ID != m.ID || fetched.Content != m.Content || fetched.Author.Username != m.Author.Username || fetched.Author.ID != m.Author.ID {
+		t.Errorf("mismatched results, got %#v, expected %#v", fetched, m)
+	}
+
+	AssertFatal(t, testWorker.MessageDelete(nil, m.ChannelID, m.ID), "failed deleting message")
+
+	if _, err := testState.ChannelMessage(nil, m.ChannelID, m.ID); err == nil {
+		t.Error("message still exists after being removed from state")
+	}
+}

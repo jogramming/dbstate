@@ -41,8 +41,8 @@ func (s *State) HandleEventMutexSynced(shardID int, eventInterface interface{}) 
 
 // HandleEventNoSync handles an incoming event
 //
-// Use this as opposed to mutex synced and channel synced when you provide your own syncronization
-// if this is called by 2 goroutines at once, this WILL go wrong
+// Use this as opposed to mutex synced and channel synced when you provide your own synchronization
+// if this is called by 2 goroutines at once then the state gets corrupted
 func (s *State) HandleEventNoSync(shardID int, eventInterface interface{}) error {
 	if !s.handleEventPreCheck(shardID, eventInterface) {
 		return nil
@@ -113,13 +113,19 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 		err = w.RoleCreateUpdate(nil, event.GuildID, event.Role)
 	case *discordgo.GuildRoleDelete:
 		err = w.RoleDelete(nil, event.GuildID, event.RoleID)
+	case *discordgo.MessageCreate:
+		err = w.MessageCreateUpdate(nil, event.Message)
+	case *discordgo.MessageUpdate:
+		err = w.MessageCreateUpdate(nil, event.Message)
+	case *discordgo.MessageDelete:
+		err = w.MessageDelete(nil, event.ChannelID, event.ID)
 	default:
 		return nil
 	}
 
 	typ := reflect.Indirect(reflect.ValueOf(eventInterface)).Type()
 	evtName := typ.Name()
-	// logrus.Infof("Handled event %s", evtName)
+	logrus.Infof("Handled event %s", evtName)
 
 	if err != nil {
 		return errors.WithMessage(err, evtName)
@@ -428,4 +434,51 @@ func (w *shardWorker) RoleDelete(txn *badger.Txn, guildID, roleID string) error 
 	}
 
 	return nil
+}
+
+func (w *shardWorker) MessageCreateUpdate(txn *badger.Txn, newMsg *discordgo.Message) error {
+	if txn == nil {
+		return w.State.DB.Update(func(txn *badger.Txn) error {
+			return w.MessageCreateUpdate(txn, newMsg)
+		})
+	}
+
+	msg, err := w.State.ChannelMessage(txn, newMsg.ChannelID, newMsg.ID)
+	if err == nil && msg != nil {
+		if newMsg.Content != "" {
+			msg.Content = newMsg.Content
+		}
+		if newMsg.EditedTimestamp != "" {
+			msg.EditedTimestamp = newMsg.EditedTimestamp
+		}
+		if newMsg.Mentions != nil {
+			msg.Mentions = newMsg.Mentions
+		}
+		if newMsg.Embeds != nil {
+			msg.Embeds = newMsg.Embeds
+		}
+		if newMsg.Attachments != nil {
+			msg.Attachments = newMsg.Attachments
+		}
+		if newMsg.Timestamp != "" {
+			msg.Timestamp = newMsg.Timestamp
+		}
+		if newMsg.Author != nil {
+			msg.Author = newMsg.Author
+		}
+	} else {
+		msg = newMsg
+	}
+
+	return w.setKeyWithTTL(txn, KeyChannelMessage(newMsg.ChannelID, newMsg.ID), msg, w.State.MessageTTL)
+}
+
+func (w *shardWorker) MessageDelete(txn *badger.Txn, channelID, messageID string) error {
+	if txn == nil {
+		return w.State.DB.Update(func(txn *badger.Txn) error {
+			return w.MessageDelete(txn, channelID, messageID)
+		})
+	}
+
+	return txn.Delete([]byte(KeyChannelMessage(channelID, messageID)))
 }

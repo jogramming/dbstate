@@ -51,8 +51,11 @@ func main() {
 	}
 
 	log.Println("Running....")
+
+	// Fun handlers to inspect the state while running, do not run on production because these are expensive
 	http.HandleFunc("/gs", HandleGuildSize)
-	http.HandleFunc("/g", HanldeIterateGuilds)
+	http.HandleFunc("/g", HandleIterateGuilds)
+	http.HandleFunc("/msgs", HandleIterateMessages)
 	log.Fatal(http.ListenAndServe(":7441", nil))
 }
 
@@ -88,10 +91,25 @@ func HandleGuildSize(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf("Size of guild %s: %d bytes", g.Name, len(encoded))))
 }
 
-func HanldeIterateGuilds(w http.ResponseWriter, r *http.Request) {
+func HandleIterateGuilds(w http.ResponseWriter, r *http.Request) {
 	count := int64(0)
 	State.IterateGuilds(nil, func(g *discordgo.Guild) bool {
 		w.Write([]byte(g.ID + ": " + g.Name + "\n"))
+		count++
+		return true
+	})
+	w.Write([]byte("Total: " + strconv.FormatInt(count, 10) + "\n"))
+}
+
+func HandleIterateMessages(w http.ResponseWriter, r *http.Request) {
+	cID := r.URL.Query().Get("channel")
+	if cID == "" {
+		return
+	}
+
+	count := int64(0)
+	State.IterateChannelMessages(nil, cID, func(m *discordgo.Message) bool {
+		w.Write([]byte(m.ID + ": " + m.Author.Username + ": " + m.ContentWithMentionsReplaced() + "\n"))
 		count++
 		return true
 	})
