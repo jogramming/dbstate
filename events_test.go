@@ -113,3 +113,44 @@ func TestGuildChannels(t *testing.T) {
 	}
 	AssertErr(t, testWorker.GuildDelete("1"), "failed removing guild")
 }
+
+func TestGuildRoles(t *testing.T) {
+	r := &discordgo.Role{
+		ID:    "2",
+		Color: 100,
+		Name:  "Hello there",
+	}
+
+	g := &discordgo.Guild{
+		ID: "1",
+	}
+
+	AssertFatal(t, testWorker.GuildCreate(g), "failed creating guild")
+	AssertFatal(t, testWorker.RoleCreateUpdate(nil, g.ID, r), "failed creating role")
+
+	gFetched, err := testState.Guild(nil, g.ID)
+	AssertFatal(t, err, "failed retrieving guild")
+
+	rFetched := gFetched.FindRole(r.ID)
+
+	// fetched, err := testState.Channel(nil, "2")
+
+	if rFetched.ID != r.ID || rFetched.Color != r.Color || rFetched.Name != r.Name {
+		t.Errorf("mismatched results, got %#v, expected %#v", rFetched, r)
+	}
+
+	AssertFatal(t, testWorker.RoleDelete(nil, g.ID, r.ID), "failed deleting role")
+
+	gFetched, err = testState.Guild(nil, g.ID)
+	AssertFatal(t, err, "failed retrieving guild")
+
+	if gFetched.FindRole(r.ID) != nil {
+		t.Error("role still in state after being deleted")
+	}
+
+	// if _, err = testState.Channel(nil, "2"); err == nil {
+	// 	t.Fatal("role still there after being removed")
+	// }
+
+	AssertErr(t, testWorker.GuildDelete(g.ID), "failed removing guild")
+}

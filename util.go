@@ -21,7 +21,7 @@ func (w *shardWorker) setKey(tx *badger.Txn, key string, val interface{}) error 
 		return errors.WithMessage(err, "EncodeData")
 	}
 
-	err = tx.Set([]byte(key), encoded, 0)
+	err = tx.Set([]byte(key), encoded)
 	return err
 }
 
