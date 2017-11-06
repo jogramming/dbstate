@@ -97,6 +97,7 @@ func (s *State) RetryUpdate(fn func(txn *badger.Txn) error) error {
 
 		if err == badger.ErrConflict {
 			logrus.Warn("Transaction conflict, retrying...")
+			time.Sleep(time.Millisecond)
 			continue
 		}
 

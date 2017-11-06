@@ -121,10 +121,19 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 	case *discordgo.ChannelDelete:
 		err = w.ChannelDelete(nil, event.Channel.ID)
 	case *discordgo.MessageCreate:
+		if !w.State.TrackMessages {
+			return nil
+		}
 		err = w.MessageCreateUpdate(nil, event.Message)
 	case *discordgo.MessageUpdate:
+		if !w.State.TrackMessages {
+			return nil
+		}
 		err = w.MessageCreateUpdate(nil, event.Message)
 	case *discordgo.MessageDelete:
+		if !w.State.TrackMessages {
+			return nil
+		}
 		err = w.MessageDelete(nil, event.ChannelID, event.ID)
 	default:
 		return nil
@@ -132,7 +141,7 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 
 	typ := reflect.Indirect(reflect.ValueOf(eventInterface)).Type()
 	evtName := typ.Name()
-	logrus.Infof("Handled event %s", evtName)
+	// logrus.Infof("Handled event %s", evtName)
 
 	if err != nil {
 		return errors.WithMessage(err, evtName)

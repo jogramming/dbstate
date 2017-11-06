@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"github.com/Sirupsen/logrus"
 	"github.com/bwmarrin/discordgo"
 	"github.com/jonas747/dbstate"
 	"github.com/jonas747/dshardmanager"
@@ -12,6 +13,8 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"strconv"
+	"sync/atomic"
+	"time"
 )
 
 var (
@@ -30,10 +33,23 @@ func main() {
 		log.Fatal("Failed initializing state: ", err)
 	}
 	State = state
+	state.TrackPresences = true
+	state.TrackMessages = true
+
+	eventCounter := new(int64)
 
 	manager.AddHandler(func(session *discordgo.Session, evt interface{}) {
+		if _, ok := evt.(*discordgo.Event); ok {
+			// Fast path this since this is sent for every single event
+			return
+		}
+
+		atomic.AddInt64(eventCounter, 1)
+
 		state.HandleEventChannelSynced(session.ShardID, evt)
 	})
+
+	go printStats(eventCounter)
 
 	manager.SessionFunc = func(token string) (*discordgo.Session, error) {
 		session, err := discordgo.New(token)
@@ -61,6 +77,16 @@ func main() {
 
 	log.Println("Running....")
 	select {}
+}
+
+func printStats(counter *int64) {
+	ticker := time.NewTicker(time.Second)
+	for {
+		<-ticker.C
+
+		current := atomic.SwapInt64(counter, 0)
+		logrus.Info("Handled ", current, " events the last second")
+	}
 }
 
 func HandleGuildSize(w http.ResponseWriter, r *http.Request) {

@@ -24,6 +24,7 @@ type State struct {
 	// unless you want race conditions
 	MessageTTL     time.Duration
 	TrackPresences bool
+	TrackMessages  bool
 
 	numShards int
 
