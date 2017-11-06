@@ -91,7 +91,7 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 			return nil
 		}
 
-		err = w.PresenceAddUpdate(nil, &event.Presence)
+		err = w.PresenceAddUpdate(nil, false, &event.Presence)
 	case *discordgo.Ready:
 		err = w.HandleReady(event)
 	case *discordgo.GuildCreate:
@@ -211,7 +211,7 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 		// Load presences
 		if w.State.TrackPresences {
 			for _, p := range g.Presences {
-				err := w.PresenceAddUpdate(txn, p)
+				err := w.PresenceAddUpdate(txn, true, p)
 				if err != nil {
 					return err
 				}
@@ -221,7 +221,7 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 		return nil
 	})
 
-	if len(g.Members) > 100 {
+	if len(g.Members) > 1000 {
 		logrus.Infof("Handled %d members in %s", len(g.Members), time.Since(started))
 	}
 
@@ -542,19 +542,23 @@ OUTER:
 }
 
 // PresenceUpdate will add or update an existing presence in state
-func (w *shardWorker) PresenceAddUpdate(txn *badger.Txn, p *discordgo.Presence) error {
+func (w *shardWorker) PresenceAddUpdate(txn *badger.Txn, forceAdd bool, p *discordgo.Presence) error {
 	if txn == nil {
 		return w.State.RetryUpdate(func(txn *badger.Txn) error {
-			return w.PresenceAddUpdate(txn, p)
+			return w.PresenceAddUpdate(txn, forceAdd, p)
 		})
 	}
 
-	current, err := w.State.Presence(txn, p.User.ID)
-	if err != nil && err != badger.ErrKeyNotFound {
-		return err
+	var current *discordgo.Presence
+	if !forceAdd {
+		var err error
+		current, err = w.State.Presence(txn, p.User.ID)
+		if err != nil && err != badger.ErrKeyNotFound {
+			return err
+		}
 	}
 
-	if err == nil {
+	if current != nil {
 		// update the existing one
 		if p.User.Username != "" {
 			current.User.Username = p.User.Username

@@ -32,6 +32,8 @@ type State struct {
 
 	// Reuse the buffers used for encoding values into state
 	shards []*shardWorker
+
+	recentlyProcessedPresences *sync.Map
 }
 
 type shardWorker struct {
