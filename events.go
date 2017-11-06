@@ -135,6 +135,8 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 			return nil
 		}
 		err = w.MessageDelete(nil, event.ChannelID, event.ID)
+	case *discordgo.VoiceStateUpdate:
+		err = w.VoiceStateUpdate(nil, event.VoiceState)
 	default:
 		return nil
 	}
@@ -194,6 +196,14 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 		for _, c := range g.Channels {
 			c.GuildID = g.ID
 			err := w.ChannelCreateUpdate(txn, c, false)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Load voice states
+		for _, vs := range g.VoiceStates {
+			err := w.VoiceStateUpdate(txn, vs)
 			if err != nil {
 				return err
 			}
@@ -580,4 +590,25 @@ func (w *shardWorker) PresenceAddUpdate(txn *badger.Txn, forceAdd bool, p *disco
 	}
 
 	return w.setKey(txn, KeyPresence(p.User.ID), current)
+}
+
+// VoiceStateUpdate will add/update/delete a voice state in state
+func (w *shardWorker) VoiceStateUpdate(txn *badger.Txn, vs *discordgo.VoiceState) error {
+	if txn == nil {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
+			return w.VoiceStateUpdate(txn, vs)
+		})
+	}
+
+	if vs.ChannelID == "" {
+		// Left the channel
+		err := txn.Delete(KeyVoiceState(vs.GuildID, vs.UserID))
+		if err != badger.ErrKeyNotFound && err != nil {
+			return err
+		}
+	} else {
+		return w.setKey(txn, KeyVoiceState(vs.GuildID, vs.UserID), vs)
+	}
+
+	return nil
 }

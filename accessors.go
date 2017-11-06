@@ -152,3 +152,9 @@ func (s *State) Presence(txn *badger.Txn, userID string) (st *discordgo.Presence
 	err = s.GetKey(txn, KeyPresence(userID), &st)
 	return
 }
+
+// VoiceState returns a VoiceState from state
+func (s *State) VoiceState(txn *badger.Txn, guildID, userID string) (st *discordgo.VoiceState, err error) {
+	err = s.GetKey(txn, KeyVoiceState(guildID, userID), &st)
+	return
+}

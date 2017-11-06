@@ -212,12 +212,30 @@ func TestPresences(t *testing.T) {
 		},
 	}
 
-	AssertFatal(t, testWorker.PresenceAddUpdate(nil, p), "failed creating presence")
+	AssertFatal(t, testWorker.PresenceAddUpdate(nil, false, p), "failed creating presence")
 
 	fetched, err := testState.Presence(nil, p.User.ID)
 	AssertFatal(t, err, "failed retrieving presence")
 
 	if fetched.User.ID != p.User.ID || fetched.Nick != p.Nick || fetched.User.Username != p.User.Username {
 		t.Errorf("mismatched results, got %#v, expected %#v", fetched, p)
+	}
+}
+
+func TestVoiceStates(t *testing.T) {
+	vs := &discordgo.VoiceState{
+		GuildID:   "1",
+		UserID:    "5",
+		ChannelID: "2",
+		Mute:      true,
+	}
+
+	AssertFatal(t, testWorker.VoiceStateUpdate(nil, vs), "failed creating voicestate")
+
+	fetched, err := testState.VoiceState(nil, vs.GuildID, vs.UserID)
+	AssertFatal(t, err, "failed retrieving voice state")
+
+	if fetched.UserID != vs.UserID || fetched.GuildID != vs.GuildID || fetched.Mute != vs.Mute {
+		t.Errorf("mismatched results, got %#v, expected %#v", fetched, vs)
 	}
 }

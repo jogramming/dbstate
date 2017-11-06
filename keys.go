@@ -21,9 +21,9 @@ const (
 	KeyTypeChannel        KeyType = 'c'
 	KeyTypeChannelMessage KeyType = 's'
 	KeyTypePresence       KeyType = 'p'
+	KeyTypeVoiceState     KeyType = 'v'
 )
 
-func KeyUser(userID string) string { return "users:" + userID }
 func KeyGuild(guildID string) []byte {
 
 	// 0 keytype, 8 id
@@ -105,6 +105,31 @@ func KeyPresence(userID string) []byte {
 
 	parsedU, _ := strconv.ParseUint(userID, 10, 64)
 	binary.LittleEndian.PutUint64(buf[1:], parsedU)
+
+	return buf
+}
+
+func KeyVoiceState(guildID, userID string) []byte {
+	// 1 keytype, 8 guildID, 8 userID
+	buf := make([]byte, 17)
+	buf[0] = byte(KeyTypeVoiceState)
+
+	parsedG, _ := strconv.ParseUint(guildID, 10, 64)
+	binary.LittleEndian.PutUint64(buf[1:], parsedG)
+
+	parsedU, _ := strconv.ParseUint(userID, 10, 64)
+	binary.LittleEndian.PutUint64(buf[9:], parsedU)
+
+	return buf
+}
+
+func KeyVoiceStateIteratorPrefix(guildID string) []byte {
+	// 1 keytype, 8 guildID
+	buf := make([]byte, 9)
+	buf[0] = byte(KeyTypeVoiceState)
+
+	parsedG, _ := strconv.ParseUint(guildID, 10, 64)
+	binary.LittleEndian.PutUint64(buf[1:], parsedG)
 
 	return buf
 }
