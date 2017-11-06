@@ -148,9 +148,30 @@ func TestGuildRoles(t *testing.T) {
 		t.Error("role still in state after being deleted")
 	}
 
-	// if _, err = testState.Channel(nil, "2"); err == nil {
-	// 	t.Fatal("role still there after being removed")
-	// }
+	AssertErr(t, testWorker.GuildDelete(g.ID), "failed removing guild")
+}
+
+func TestGuildEmojis(t *testing.T) {
+	e := &discordgo.Emoji{
+		ID:   "7",
+		Name: "Hello there",
+	}
+
+	g := &discordgo.Guild{
+		ID: "1",
+	}
+
+	AssertFatal(t, testWorker.GuildCreate(g), "failed creating guild")
+	AssertFatal(t, testWorker.EmojisUpdate(nil, g.ID, []*discordgo.Emoji{e}), "failed creating emoji")
+
+	gFetched, err := testState.Guild(nil, g.ID)
+	AssertFatal(t, err, "failed retrieving guild")
+
+	eFetched := gFetched.FindEmoji(e.ID)
+
+	if eFetched.ID != e.ID || eFetched.Name != e.Name {
+		t.Errorf("mismatched results, got %#v, expected %#v", eFetched, e)
+	}
 
 	AssertErr(t, testWorker.GuildDelete(g.ID), "failed removing guild")
 }

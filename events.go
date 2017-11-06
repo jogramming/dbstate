@@ -101,18 +101,20 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 		err = w.MemberUpdate(nil, event.Member)
 	case *discordgo.GuildMemberRemove:
 		err = w.MemberRemove(nil, event.Member.GuildID, event.Member.User.ID, true)
-	case *discordgo.ChannelCreate:
-		err = w.ChannelCreateUpdate(nil, event.Channel, true)
-	case *discordgo.ChannelUpdate:
-		err = w.ChannelCreateUpdate(nil, event.Channel, true)
-	case *discordgo.ChannelDelete:
-		err = w.ChannelDelete(nil, event.Channel.ID)
 	case *discordgo.GuildRoleCreate:
 		err = w.RoleCreateUpdate(nil, event.GuildID, event.Role)
 	case *discordgo.GuildRoleUpdate:
 		err = w.RoleCreateUpdate(nil, event.GuildID, event.Role)
 	case *discordgo.GuildRoleDelete:
 		err = w.RoleDelete(nil, event.GuildID, event.RoleID)
+	case *discordgo.GuildEmojisUpdate:
+		err = w.EmojisUpdate(nil, event.GuildID, event.Emojis)
+	case *discordgo.ChannelCreate:
+		err = w.ChannelCreateUpdate(nil, event.Channel, true)
+	case *discordgo.ChannelUpdate:
+		err = w.ChannelCreateUpdate(nil, event.Channel, true)
+	case *discordgo.ChannelDelete:
+		err = w.ChannelDelete(nil, event.Channel.ID)
 	case *discordgo.MessageCreate:
 		err = w.MessageCreateUpdate(nil, event.Message)
 	case *discordgo.MessageUpdate:
@@ -481,4 +483,36 @@ func (w *shardWorker) MessageDelete(txn *badger.Txn, channelID, messageID string
 	}
 
 	return txn.Delete([]byte(KeyChannelMessage(channelID, messageID)))
+}
+
+// RoleDelete removes a role from state
+func (w *shardWorker) EmojisUpdate(txn *badger.Txn, guildID string, emojis []*discordgo.Emoji) error {
+	if txn == nil {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
+			return w.EmojisUpdate(txn, guildID, emojis)
+		})
+	}
+
+	guild, err := w.State.Guild(txn, guildID)
+	if err != nil {
+		return errors.WithMessage(err, "Guild")
+	}
+
+OUTER:
+	for _, newEmoji := range emojis {
+		for _, v := range guild.Emojis {
+			if v.ID == newEmoji.ID {
+				continue OUTER
+			}
+		}
+
+		guild.Emojis = append(guild.Emojis, newEmoji)
+	}
+
+	err = w.setKey(txn, KeyGuild(guild.ID), guild)
+	if err != nil {
+		return errors.WithMessage(err, "SetGuild")
+	}
+
+	return nil
 }
