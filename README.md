@@ -13,7 +13,7 @@ This is still in development, The status is shown below:
 
 **Status:**
 
-The API is not stable currently, it will stabilise as it gets closer to 1.0, see the 1.0 issue [here](https://github.com/jonas747/dbstate/milestone/1)
+The API is not stable currently, it will stabilise as it gets closer to the 1.0 release, see the 1.0 milestone [here](https://github.com/jonas747/dbstate/milestone/1)
 
 ## Pros and cons
 
