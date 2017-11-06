@@ -20,12 +20,12 @@ var (
 
 func main() {
 	manager := dshardmanager.New(os.Getenv("DG_TOKEN"))
-	reccomended, err := manager.GetRecommendedCount()
+	recommended, err := manager.GetRecommendedCount()
 	if err != nil {
-		log.Fatal("Error retrieving reccomended shard count: ", err)
+		log.Fatal("Error retrieving recommended shard count: ", err)
 	}
 
-	state, err := dbstate.NewState("", reccomended, true)
+	state, err := dbstate.NewState("", recommended, true)
 	if err != nil {
 		log.Fatal("Failed initializing state: ", err)
 	}
