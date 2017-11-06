@@ -11,11 +11,11 @@ import (
 
 // setKey is a helper to encode and set a get using the provided shards encoder and buffer
 // If tx is nil, will create a new transaction
-func (w *shardWorker) setKey(tx *badger.Txn, key string, val interface{}) error {
+func (w *shardWorker) setKey(tx *badger.Txn, key []byte, val interface{}) error {
 	return w.setKeyWithTTL(tx, key, val, -1)
 }
 
-func (w *shardWorker) setKeyWithTTL(tx *badger.Txn, key string, val interface{}, ttl time.Duration) error {
+func (w *shardWorker) setKeyWithTTL(tx *badger.Txn, key []byte, val interface{}, ttl time.Duration) error {
 	if tx == nil {
 		return w.State.RetryUpdate(func(txn *badger.Txn) error {
 			return w.setKey(txn, key, val)
@@ -28,9 +28,9 @@ func (w *shardWorker) setKeyWithTTL(tx *badger.Txn, key string, val interface{},
 	}
 
 	if ttl > 0 {
-		err = tx.SetWithTTL([]byte(key), encoded, ttl)
+		err = tx.SetWithTTL(key, encoded, ttl)
 	} else {
-		err = tx.Set([]byte(key), encoded)
+		err = tx.Set(key, encoded)
 	}
 	return err
 }
@@ -60,14 +60,14 @@ func (w *shardWorker) encodeData(val interface{}) ([]byte, error) {
 
 // GetKey is a helper for retrieving a key and decoding it into the destination
 // If tx is nil, will create a new transaction
-func (s *State) GetKey(tx *badger.Txn, key string, dest interface{}) error {
+func (s *State) GetKey(tx *badger.Txn, key []byte, dest interface{}) error {
 	if tx == nil {
 		return s.DB.View(func(txn *badger.Txn) error {
 			return s.GetKey(txn, key, dest)
 		})
 	}
 
-	item, err := tx.Get([]byte(key))
+	item, err := tx.Get(key)
 	if err != nil {
 		return err
 	}

@@ -46,18 +46,21 @@ func main() {
 		return session, nil
 	}
 
+	go func() {
+		// Fun handlers to inspect the state while running, do not run on production because these are expensive
+		http.HandleFunc("/gs", HandleGuildSize)
+		http.HandleFunc("/g", HandleIterateGuilds)
+		http.HandleFunc("/msgs", HandleIterateMessages)
+		log.Fatal(http.ListenAndServe(":7441", nil))
+	}()
+
 	err = manager.Start()
 	if err != nil {
 		log.Fatal("Failed starting shard manager: ", err)
 	}
 
 	log.Println("Running....")
-
-	// Fun handlers to inspect the state while running, do not run on production because these are expensive
-	http.HandleFunc("/gs", HandleGuildSize)
-	http.HandleFunc("/g", HandleIterateGuilds)
-	http.HandleFunc("/msgs", HandleIterateMessages)
-	log.Fatal(http.ListenAndServe(":7441", nil))
+	select {}
 }
 
 func HandleGuildSize(w http.ResponseWriter, r *http.Request) {

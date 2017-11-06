@@ -1,5 +1,5 @@
-// dbstate is a package that provides a discord state tracker that uses badger as the underlying store
-
+// Package dbstate is a package that provides a discord state tracker using badger as the underlying store
+// allowing for the state to grow beyond the avilable system memory
 package dbstate
 
 import (

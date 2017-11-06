@@ -34,7 +34,7 @@ func (s *State) IterateGuilds(txn *badger.Txn, f func(g *discordgo.Guild) bool) 
 	}
 
 	// Scan over the prefix
-	prefix := []byte(KeyGuildsIteratorPrefix)
+	prefix := []byte{byte(KeyTypeGuild)}
 
 	opts := badger.DefaultIteratorOptions
 	it := txn.NewIterator(opts)
