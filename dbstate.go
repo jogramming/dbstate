@@ -22,7 +22,8 @@ type State struct {
 
 	// Configuration options, set these before starting to feed it with events
 	// unless you want race conditions
-	MessageTTL time.Duration
+	MessageTTL     time.Duration
+	TrackPresences bool
 
 	numShards int
 

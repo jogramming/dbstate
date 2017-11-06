@@ -202,3 +202,22 @@ func TestChannelMessages(t *testing.T) {
 		t.Error("message still exists after being removed from state")
 	}
 }
+
+func TestPresences(t *testing.T) {
+	p := &discordgo.Presence{
+		Nick: "boiman",
+		User: &discordgo.User{
+			ID:       "5",
+			Username: "bob",
+		},
+	}
+
+	AssertFatal(t, testWorker.PresenceAddUpdate(nil, p), "failed creating presence")
+
+	fetched, err := testState.Presence(nil, p.User.ID)
+	AssertFatal(t, err, "failed retrieving presence")
+
+	if fetched.User.ID != p.User.ID || fetched.Nick != p.Nick || fetched.User.Username != p.User.Username {
+		t.Errorf("mismatched results, got %#v, expected %#v", fetched, p)
+	}
+}

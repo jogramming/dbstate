@@ -20,6 +20,7 @@ const (
 	KeyTypeMember         KeyType = 'm'
 	KeyTypeChannel        KeyType = 'c'
 	KeyTypeChannelMessage KeyType = 's'
+	KeyTypePresence       KeyType = 'p'
 )
 
 func KeyUser(userID string) string { return "users:" + userID }
@@ -93,6 +94,17 @@ func KeyChannelMessageIteratorPrefix(channelID string) []byte {
 
 	parsedC, _ := strconv.ParseUint(channelID, 10, 64)
 	binary.LittleEndian.PutUint64(buf[1:], parsedC)
+
+	return buf
+}
+
+func KeyPresence(userID string) []byte {
+	// 1 keytype, 8 channelID
+	buf := make([]byte, 9)
+	buf[0] = byte(KeyTypePresence)
+
+	parsedU, _ := strconv.ParseUint(userID, 10, 64)
+	binary.LittleEndian.PutUint64(buf[1:], parsedU)
 
 	return buf
 }

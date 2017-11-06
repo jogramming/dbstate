@@ -86,8 +86,13 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 	var err error
 
 	switch event := eventInterface.(type) {
+	case *discordgo.PresenceUpdate:
+		if !w.State.TrackPresences {
+			return nil
+		}
+
+		err = w.PresenceAddUpdate(nil, &event.Presence)
 	case *discordgo.Ready:
-		logrus.Infof("Received ready for shard %d", w.shardID)
 		err = w.HandleReady(event)
 	case *discordgo.GuildCreate:
 		err = w.GuildCreate(event.Guild)
@@ -176,6 +181,15 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 			return err
 		}
 
+		// Load channels to global registry
+		for _, c := range g.Channels {
+			c.GuildID = g.ID
+			err := w.ChannelCreateUpdate(txn, c, false)
+			if err != nil {
+				return err
+			}
+		}
+
 		// Load members
 		for _, m := range g.Members {
 			m.GuildID = g.ID
@@ -185,12 +199,13 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 			}
 		}
 
-		// Load channels to global registry
-		for _, c := range g.Channels {
-			c.GuildID = g.ID
-			err := w.ChannelCreateUpdate(txn, c, false)
-			if err != nil {
-				return err
+		// Load presences
+		if w.State.TrackPresences {
+			for _, p := range g.Presences {
+				err := w.PresenceAddUpdate(txn, p)
+				if err != nil {
+					return err
+				}
 			}
 		}
 
@@ -515,4 +530,41 @@ OUTER:
 	}
 
 	return nil
+}
+
+// PresenceUpdate will add or update an existing presence in state
+func (w *shardWorker) PresenceAddUpdate(txn *badger.Txn, p *discordgo.Presence) error {
+	if txn == nil {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
+			return w.PresenceAddUpdate(txn, p)
+		})
+	}
+
+	current, err := w.State.Presence(txn, p.User.ID)
+	if err != nil && err != badger.ErrKeyNotFound {
+		return err
+	}
+
+	if err == nil {
+		// update the existing one
+		if p.User.Username != "" {
+			current.User.Username = p.User.Username
+		}
+		if p.User.Discriminator != "" {
+			current.User.Discriminator = p.User.Discriminator
+		}
+		if p.User.Avatar != "" {
+			current.User.Avatar = p.User.Avatar
+		}
+		if p.Status != "" {
+			current.Status = p.Status
+		}
+
+		current.Game = p.Game
+		current.Nick = p.Nick
+	} else {
+		current = p
+	}
+
+	return w.setKey(txn, KeyPresence(p.User.ID), current)
 }

@@ -146,3 +146,9 @@ func (s *State) IterateChannelMessages(txn *badger.Txn, channelID string, f func
 	}
 	return nil
 }
+
+// Presence returns a presence from state
+func (s *State) Presence(txn *badger.Txn, userID string) (st *discordgo.Presence, err error) {
+	err = s.GetKey(txn, KeyPresence(userID), &st)
+	return
+}
