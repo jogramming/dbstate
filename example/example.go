@@ -9,6 +9,7 @@ import (
 	"github.com/jonas747/dshardmanager"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
 )

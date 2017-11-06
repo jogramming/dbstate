@@ -167,7 +167,7 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 	gCopy.VoiceStates = nil
 
 	started := time.Now()
-	err := w.State.DB.Update(func(txn *badger.Txn) error {
+	err := w.State.RetryUpdate(func(txn *badger.Txn) error {
 		// Handle the initial load
 		err := w.setKey(txn, KeyGuild(g.ID), gCopy)
 		if err != nil {
@@ -203,7 +203,7 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 }
 
 func (w *shardWorker) GuildUpdate(g *discordgo.Guild) error {
-	err := w.State.DB.Update(func(txn *badger.Txn) error {
+	err := w.State.RetryUpdate(func(txn *badger.Txn) error {
 		current, err := w.State.Guild(txn, g.ID)
 		if err != nil {
 			return errors.WithMessage(err, "GuildUpdate")
@@ -229,7 +229,7 @@ func (w *shardWorker) GuildUpdate(g *discordgo.Guild) error {
 
 // GuildDelete removes a guild from the state
 func (w *shardWorker) GuildDelete(guildID string) error {
-	return w.State.DB.Update(func(txn *badger.Txn) error {
+	return w.State.RetryUpdate(func(txn *badger.Txn) error {
 		return txn.Delete([]byte(KeyGuild(guildID)))
 	})
 }
@@ -238,7 +238,7 @@ func (w *shardWorker) GuildDelete(guildID string) error {
 // if you call this on members already in the count, your membercount will be off
 func (w *shardWorker) MemberAdd(txn *badger.Txn, m *discordgo.Member, updateCount bool) error {
 	if txn == nil {
-		return w.State.DB.Update(func(txn *badger.Txn) error {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
 			return w.MemberAdd(txn, m, updateCount)
 		})
 	}
@@ -267,7 +267,7 @@ func (w *shardWorker) MemberUpdate(txn *badger.Txn, m *discordgo.Member) error {
 // MemberRemove will decrement membercount if "updateCount" and remove the member form state
 func (w *shardWorker) MemberRemove(txn *badger.Txn, guildID, userID string, updateCount bool) error {
 	if txn == nil {
-		return w.State.DB.Update(func(txn *badger.Txn) error {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
 			return w.MemberRemove(txn, guildID, userID, updateCount)
 		})
 	}
@@ -291,7 +291,7 @@ func (w *shardWorker) MemberRemove(txn *badger.Txn, guildID, userID string, upda
 // if addtoguild is set, it will add and update it on the actual guild object aswell
 func (w *shardWorker) ChannelCreateUpdate(txn *badger.Txn, channel *discordgo.Channel, addToGuild bool) error {
 	if txn == nil {
-		return w.State.DB.Update(func(txn *badger.Txn) error {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
 			return w.ChannelCreateUpdate(txn, channel, addToGuild)
 		})
 	}
@@ -333,7 +333,7 @@ func (w *shardWorker) ChannelCreateUpdate(txn *badger.Txn, channel *discordgo.Ch
 // ChannelDelete removes a channel from state
 func (w *shardWorker) ChannelDelete(txn *badger.Txn, channelID string) error {
 	if txn == nil {
-		return w.State.DB.Update(func(txn *badger.Txn) error {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
 			return w.ChannelDelete(txn, channelID)
 		})
 	}
@@ -376,7 +376,7 @@ func (w *shardWorker) ChannelDelete(txn *badger.Txn, channelID string) error {
 // These roles are actually on the guild at the moment
 func (w *shardWorker) RoleCreateUpdate(txn *badger.Txn, guildID string, role *discordgo.Role) error {
 	if txn == nil {
-		return w.State.DB.Update(func(txn *badger.Txn) error {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
 			return w.RoleCreateUpdate(txn, guildID, role)
 		})
 	}
@@ -411,7 +411,7 @@ func (w *shardWorker) RoleCreateUpdate(txn *badger.Txn, guildID string, role *di
 // RoleDelete removes a role from state
 func (w *shardWorker) RoleDelete(txn *badger.Txn, guildID, roleID string) error {
 	if txn == nil {
-		return w.State.DB.Update(func(txn *badger.Txn) error {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
 			return w.RoleDelete(txn, guildID, roleID)
 		})
 	}
@@ -438,7 +438,7 @@ func (w *shardWorker) RoleDelete(txn *badger.Txn, guildID, roleID string) error 
 
 func (w *shardWorker) MessageCreateUpdate(txn *badger.Txn, newMsg *discordgo.Message) error {
 	if txn == nil {
-		return w.State.DB.Update(func(txn *badger.Txn) error {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
 			return w.MessageCreateUpdate(txn, newMsg)
 		})
 	}
@@ -475,7 +475,7 @@ func (w *shardWorker) MessageCreateUpdate(txn *badger.Txn, newMsg *discordgo.Mes
 
 func (w *shardWorker) MessageDelete(txn *badger.Txn, channelID, messageID string) error {
 	if txn == nil {
-		return w.State.DB.Update(func(txn *badger.Txn) error {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
 			return w.MessageDelete(txn, channelID, messageID)
 		})
 	}

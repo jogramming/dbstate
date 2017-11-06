@@ -3,6 +3,7 @@ package dbstate
 import (
 	"bytes"
 	"encoding/gob"
+	"github.com/Sirupsen/logrus"
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
 	"time"
@@ -16,7 +17,7 @@ func (w *shardWorker) setKey(tx *badger.Txn, key string, val interface{}) error 
 
 func (w *shardWorker) setKeyWithTTL(tx *badger.Txn, key string, val interface{}, ttl time.Duration) error {
 	if tx == nil {
-		return w.State.DB.Update(func(txn *badger.Txn) error {
+		return w.State.RetryUpdate(func(txn *badger.Txn) error {
 			return w.setKey(txn, key, val)
 		})
 	}
@@ -38,6 +39,7 @@ func (w *shardWorker) setKeyWithTTL(tx *badger.Txn, key string, val interface{},
 func (w *shardWorker) encodeData(val interface{}) ([]byte, error) {
 	// Reusing encoders gave issues
 	encoder := gob.NewEncoder(w.buffer)
+	// encoder := w.encoder
 
 	err := encoder.Encode(val)
 	if err != nil {
@@ -82,4 +84,22 @@ func (s *State) DecodeData(data []byte, dest interface{}) error {
 	decoder := gob.NewDecoder(bytes.NewReader(data))
 	err := decoder.Decode(dest)
 	return err
+}
+
+// RetryUpdate will run s.DB.Update with `fn` and re-run it if ErrConflict is returned, until no there are no conflicts
+// therefor `fn` may be called multiple times, but each time there is a conflict writes are thrown away
+func (s *State) RetryUpdate(fn func(txn *badger.Txn) error) error {
+	for {
+		err := s.DB.Update(fn)
+		if err == nil {
+			return nil
+		}
+
+		if err == badger.ErrConflict {
+			logrus.Warn("Transaction conflict, retrying...")
+			continue
+		}
+
+		return err
+	}
 }

@@ -73,6 +73,7 @@ func NewState(path string, numShards int, channelSyncMode bool) (*State, error) 
 	opts := badger.DefaultOptions
 	opts.Dir = path
 	opts.ValueDir = path
+	opts.SyncWrites = false
 
 	db, err := badger.Open(opts)
 	if err != nil {
