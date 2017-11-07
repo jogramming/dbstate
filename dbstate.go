@@ -28,6 +28,9 @@ type State struct {
 	TrackPresences bool
 	TrackMessages  bool
 
+	// The state itself implements this, so by default this is set to the state itself
+	Logger Logger
+
 	numShards int
 
 	memoryState *memoryState
@@ -37,6 +40,12 @@ type State struct {
 
 	// Filters multiple presence updates from the same users in the same moment (by e.g sharing multiple servers with the bot)
 	presenceUpdateFilter *presenceUpdateFilter
+}
+
+type Logger interface {
+	LogWarn(...interface{})
+	LogError(...interface{})
+	LogInfo(...interface{})
 }
 
 type shardWorker struct {
@@ -101,6 +110,7 @@ func NewState(path string, numShards int, channelSyncMode bool) (*State, error) 
 		MessageTTL:           time.Hour,
 		presenceUpdateFilter: &presenceUpdateFilter{numShards: numShards},
 	}
+	s.Logger = s
 
 	go s.gcWorker()
 	s.initWorkers(shards, channelSyncMode)
@@ -115,13 +125,13 @@ func (s *State) gcWorker() {
 		case <-t1s.C:
 			s.presenceUpdateFilter.clear()
 		case <-t1m.C:
-			logrus.Info("starting badger gc")
+			s.Logger.LogInfo("starting badger gc")
 
 			// Enabling this made all the keys suddenly stop working, i think i may be doing something wrong in this regard
 			// db.PurgeOlderVersions()
 
 			s.DB.RunValueLogGC(0.5)
-			logrus.Info("Done with badger gc")
+			s.Logger.LogInfo("Done with badger gc")
 		}
 	}
 }
@@ -209,4 +219,14 @@ func rmDir(path string) error {
 	}
 
 	return nil
+}
+
+func (s *State) LogWarn(m ...interface{}) {
+	logrus.Warn(append([]interface{}{"[dbstate]: "}, m...)...)
+}
+func (s *State) LogError(m ...interface{}) {
+	logrus.Error(append([]interface{}{"[dbstate]: "}, m...)...)
+}
+func (s *State) LogInfo(m ...interface{}) {
+	logrus.Info(append([]interface{}{"[dbstate]: "}, m...)...)
 }

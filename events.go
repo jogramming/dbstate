@@ -1,7 +1,7 @@
 package dbstate
 
 import (
-	"github.com/Sirupsen/logrus"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
@@ -72,8 +72,7 @@ func (w *shardWorker) run() {
 		case event := <-w.eventChan:
 			err := w.handleEvent(event)
 			if err != nil {
-				// TODO: Add support for custom loggers
-				logrus.WithError(err).Error("Failed handling event")
+				w.State.Logger.LogError("Failed handling event: ", err)
 			}
 		}
 	}
@@ -236,7 +235,7 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 	})
 
 	if len(g.Members) > 1000 {
-		logrus.Infof("Handled %d members in %s", len(g.Members), time.Since(started))
+		w.State.Logger.LogInfo(fmt.Sprintf("Handled %d members in %s", len(g.Members), time.Since(started)))
 	}
 
 	return err
@@ -286,7 +285,6 @@ func (w *shardWorker) MemberAdd(txn *badger.Txn, m *discordgo.Member, updateCoun
 	if updateCount {
 		guild, err := w.State.Guild(txn, m.GuildID)
 		if err != nil {
-			logrus.Info(m.GuildID)
 			return errors.WithMessage(err, "Guild")
 		}
 		guild.MemberCount++
