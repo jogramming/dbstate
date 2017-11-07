@@ -2,6 +2,8 @@
 // allowing for the state to grow beyond the avilable system memory
 package dbstate
 
+//go:generate go run "cmd/gen_iterators/gen_iterators.go" -out "iterators_gen.go"
+
 import (
 	"bytes"
 	"encoding/gob"
