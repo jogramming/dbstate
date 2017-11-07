@@ -33,7 +33,8 @@ type State struct {
 	// Reuse the buffers used for encoding values into state
 	shards []*shardWorker
 
-	recentlyProcessedPresences *sync.Map
+	// Filters multiple presence updates from the same users in the same moment (by e.g sharing multiple servers with the bot)
+	presenceUpdateFilter *presenceUpdateFilter
 }
 
 type shardWorker struct {
@@ -89,30 +90,37 @@ func NewState(path string, numShards int, channelSyncMode bool) (*State, error) 
 	}
 
 	shards := make([]*shardWorker, numShards)
-	go gcWorker(db)
 
 	s := &State{
-		DB:          db,
-		numShards:   numShards,
-		shards:      shards,
-		memoryState: &memoryState{},
-		MessageTTL:  time.Hour,
+		DB:                   db,
+		numShards:            numShards,
+		shards:               shards,
+		memoryState:          &memoryState{},
+		MessageTTL:           time.Hour,
+		presenceUpdateFilter: &presenceUpdateFilter{numShards: numShards},
 	}
 
+	go s.gcWorker()
 	s.initWorkers(shards, channelSyncMode)
 	return s, nil
 }
 
-func gcWorker(db *badger.DB) {
+func (s *State) gcWorker() {
+	t1m := time.NewTicker(time.Minute)
+	t1s := time.NewTicker(time.Second)
 	for {
-		logrus.Info("starting badger gc")
+		select {
+		case <-t1s.C:
+			s.presenceUpdateFilter.clear()
+		case <-t1m.C:
+			logrus.Info("starting badger gc")
 
-		// Enabling this made all the keys suddenly stop working, i think i may be doing something wrong in this regard
-		// db.PurgeOlderVersions()
+			// Enabling this made all the keys suddenly stop working, i think i may be doing something wrong in this regard
+			// db.PurgeOlderVersions()
 
-		db.RunValueLogGC(0.5)
-		logrus.Info("Done with badger gc")
-		time.Sleep(time.Minute)
+			s.DB.RunValueLogGC(0.5)
+			logrus.Info("Done with badger gc")
+		}
 	}
 }
 

@@ -91,6 +91,10 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 			return nil
 		}
 
+		if w.State.presenceUpdateFilter.checkUserID(w.shardID, event.User.ID) {
+			return nil
+		}
+
 		err = w.PresenceAddUpdate(nil, false, &event.Presence)
 	case *discordgo.Ready:
 		err = w.HandleReady(event)

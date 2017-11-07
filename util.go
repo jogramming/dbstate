@@ -6,6 +6,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
+	"sync"
 	"time"
 )
 
@@ -103,4 +104,34 @@ func (s *State) RetryUpdate(fn func(txn *badger.Txn) error) error {
 
 		return err
 	}
+}
+
+type presenceUpdateFilter struct {
+	recentlyProcessedPresenceUpdates [][]string
+	numShards                        int
+	mu                               sync.RWMutex
+}
+
+func (f *presenceUpdateFilter) clear() {
+	f.mu.Lock()
+	f.recentlyProcessedPresenceUpdates = make([][]string, f.numShards)
+	f.mu.Unlock()
+}
+
+// Not safe to be ran by multiple goroutines using the same shard
+// Multiple goroutines with different shards is fine
+func (f *presenceUpdateFilter) checkUserID(shardID int, userID string) (checkedRecently bool) {
+	f.mu.RLock()
+	for _, shardList := range f.recentlyProcessedPresenceUpdates {
+		for _, v := range shardList {
+			if v == userID {
+				f.mu.RUnlock()
+				return true
+			}
+		}
+	}
+
+	f.recentlyProcessedPresenceUpdates[shardID] = append(f.recentlyProcessedPresenceUpdates[shardID], userID)
+	f.mu.RUnlock()
+	return false
 }
