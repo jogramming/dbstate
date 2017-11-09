@@ -72,7 +72,7 @@ func (w *shardWorker) run() {
 		case event := <-w.eventChan:
 			err := w.handleEvent(event)
 			if err != nil {
-				w.State.Logger.LogError("Failed handling event: ", err)
+				w.State.opts.Logger.LogError("Failed handling event: ", err)
 			}
 		}
 	}
@@ -86,7 +86,7 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 
 	switch event := eventInterface.(type) {
 	case *discordgo.PresenceUpdate:
-		if !w.State.TrackPresences {
+		if !w.State.opts.TrackPresences {
 			return nil
 		}
 
@@ -97,47 +97,86 @@ func (w *shardWorker) handleEvent(eventInterface interface{}) error {
 		err = w.PresenceAddUpdate(nil, false, &event.Presence)
 	case *discordgo.Ready:
 		err = w.HandleReady(event)
+
+	// Guilds
 	case *discordgo.GuildCreate:
 		err = w.GuildCreate(event.Guild)
 	case *discordgo.GuildUpdate:
 		err = w.GuildUpdate(event.Guild)
 	case *discordgo.GuildDelete:
 		err = w.GuildDelete(event.Guild.ID)
+
+	// Members
 	case *discordgo.GuildMemberAdd:
+		if !w.State.opts.TrackMembers {
+			return nil
+		}
 		err = w.MemberAdd(nil, event.Member, true)
 	case *discordgo.GuildMemberUpdate:
+		if !w.State.opts.TrackMembers {
+			return nil
+		}
 		err = w.MemberUpdate(nil, event.Member)
 	case *discordgo.GuildMemberRemove:
+		if !w.State.opts.TrackMembers {
+			return nil
+		}
 		err = w.MemberRemove(nil, event.Member.GuildID, event.Member.User.ID, true)
+
+	// Roles
 	case *discordgo.GuildRoleCreate:
+		if !w.State.opts.TrackRoles {
+			return nil
+		}
 		err = w.RoleCreateUpdate(nil, event.GuildID, event.Role)
 	case *discordgo.GuildRoleUpdate:
+		if !w.State.opts.TrackRoles {
+			return nil
+		}
 		err = w.RoleCreateUpdate(nil, event.GuildID, event.Role)
 	case *discordgo.GuildRoleDelete:
+		if !w.State.opts.TrackRoles {
+			return nil
+		}
 		err = w.RoleDelete(nil, event.GuildID, event.RoleID)
-	case *discordgo.GuildEmojisUpdate:
-		err = w.EmojisUpdate(nil, event.GuildID, event.Emojis)
+
+	// Channels
 	case *discordgo.ChannelCreate:
+		if !w.State.opts.TrackChannels {
+			return nil
+		}
 		err = w.ChannelCreateUpdate(nil, event.Channel, true)
 	case *discordgo.ChannelUpdate:
+		if !w.State.opts.TrackChannels {
+			return nil
+		}
 		err = w.ChannelCreateUpdate(nil, event.Channel, true)
 	case *discordgo.ChannelDelete:
+		if !w.State.opts.TrackChannels {
+			return nil
+		}
 		err = w.ChannelDelete(nil, event.Channel.ID)
+
+	// Messages
 	case *discordgo.MessageCreate:
-		if !w.State.TrackMessages {
+		if !w.State.opts.TrackMessages {
 			return nil
 		}
 		err = w.MessageCreateUpdate(nil, event.Message)
 	case *discordgo.MessageUpdate:
-		if !w.State.TrackMessages {
+		if !w.State.opts.TrackMessages {
 			return nil
 		}
 		err = w.MessageCreateUpdate(nil, event.Message)
 	case *discordgo.MessageDelete:
-		if !w.State.TrackMessages {
+		if !w.State.opts.TrackMessages {
 			return nil
 		}
 		err = w.MessageDelete(nil, event.ChannelID, event.ID)
+
+	// Misc
+	case *discordgo.GuildEmojisUpdate:
+		err = w.EmojisUpdate(nil, event.GuildID, event.Emojis)
 	case *discordgo.VoiceStateUpdate:
 		err = w.VoiceStateUpdate(nil, event.VoiceState)
 	default:
@@ -222,7 +261,7 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 		}
 
 		// Load presences
-		if w.State.TrackPresences {
+		if w.State.opts.TrackPresences {
 			for _, p := range g.Presences {
 				err := w.PresenceAddUpdate(txn, true, p)
 				if err != nil {
@@ -235,7 +274,7 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 	})
 
 	if len(g.Members) > 1000 {
-		w.State.Logger.LogInfo(fmt.Sprintf("Handled %d members in %s", len(g.Members), time.Since(started)))
+		w.State.opts.Logger.LogInfo(fmt.Sprintf("Handled %d members in %s", len(g.Members), time.Since(started)))
 	}
 
 	return err
@@ -508,7 +547,7 @@ func (w *shardWorker) MessageCreateUpdate(txn *badger.Txn, newMsg *discordgo.Mes
 		msg = newMsg
 	}
 
-	return w.setKeyWithTTL(txn, KeyChannelMessage(newMsg.ChannelID, newMsg.ID), msg, w.State.MessageTTL)
+	return w.setKeyWithTTL(txn, KeyChannelMessage(newMsg.ChannelID, newMsg.ID), msg, w.State.opts.MessageTTL)
 }
 
 func (w *shardWorker) MessageDelete(txn *badger.Txn, channelID, messageID string) error {

@@ -5,21 +5,20 @@ import (
 	"strconv"
 )
 
-const (
-// KeyGuildsIteratorPrefix = "guilds:"
-)
+// 1st byte of all keys is the key type (members and channels for example)
+// that is usually followed by 1 or 2 uint64 id's
+type KeyType byte
 
 var (
 	KeySelfUser = []byte{'q'}
+	KeyMeta     = []byte{'t'}
 )
-
-type KeyType byte
 
 const (
 	KeyTypeGuild          KeyType = 'g'
-	KeyTypeMember         KeyType = 'm'
+	KeyTypeMember         KeyType = 'f'
 	KeyTypeChannel        KeyType = 'c'
-	KeyTypeChannelMessage KeyType = 's'
+	KeyTypeChannelMessage KeyType = 'm'
 	KeyTypePresence       KeyType = 'p'
 	KeyTypeVoiceState     KeyType = 'v'
 )

@@ -9,20 +9,35 @@ import (
 	"time"
 )
 
+type MessageFlag byte
+
+const (
+	MessageFlagDeleted MessageFlag = 1 << iota
+	MessageFlagOld
+)
+
 // setKey is a helper to encode and set a get using the provided shards encoder and buffer
 // If tx is nil, will create a new transaction
 func (w *shardWorker) setKey(tx *badger.Txn, key []byte, val interface{}) error {
-	return w.setKeyWithTTL(tx, key, val, -1)
+	return w.State.SetKey(tx, w.buffer, key, val)
 }
 
 func (w *shardWorker) setKeyWithTTL(tx *badger.Txn, key []byte, val interface{}, ttl time.Duration) error {
+	return w.State.SetKeyWithTTL(tx, w.buffer, key, val, ttl)
+}
+
+func (s *State) SetKey(tx *badger.Txn, buffer *bytes.Buffer, key []byte, val interface{}) error {
+	return s.SetKeyWithTTL(tx, buffer, key, val, -1)
+}
+
+func (s *State) SetKeyWithTTL(tx *badger.Txn, buffer *bytes.Buffer, key []byte, val interface{}, ttl time.Duration) error {
 	if tx == nil {
-		return w.State.RetryUpdate(func(txn *badger.Txn) error {
-			return w.setKey(txn, key, val)
+		return s.RetryUpdate(func(txn *badger.Txn) error {
+			return s.SetKeyWithTTL(txn, buffer, key, val, ttl)
 		})
 	}
 
-	encoded, err := w.encodeData(val)
+	encoded, err := s.encodeData(buffer, val)
 	if err != nil {
 		return errors.WithMessage(err, "EncodeData")
 	}
@@ -36,21 +51,25 @@ func (w *shardWorker) setKeyWithTTL(tx *badger.Txn, key []byte, val interface{},
 }
 
 // encodeData encodes the provided value using the provided shards buffer and encoder
-func (w *shardWorker) encodeData(val interface{}) ([]byte, error) {
+func (s *State) encodeData(buffer *bytes.Buffer, val interface{}) ([]byte, error) {
+	if buffer == nil {
+		buffer = new(bytes.Buffer)
+	}
+
 	// Reusing encoders gave issues
-	encoder := gob.NewEncoder(w.buffer)
+	encoder := gob.NewEncoder(buffer)
 	// encoder := w.encoder
 
 	err := encoder.Encode(val)
 	if err != nil {
-		w.buffer.Reset()
+		buffer.Reset()
 		return nil, err
 	}
 
-	encoded := make([]byte, w.buffer.Len())
-	_, err = w.buffer.Read(encoded)
+	encoded := make([]byte, buffer.Len())
+	_, err = buffer.Read(encoded)
 
-	w.buffer.Reset()
+	buffer.Reset()
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +115,7 @@ func (s *State) RetryUpdate(fn func(txn *badger.Txn) error) error {
 		}
 
 		if err == badger.ErrConflict {
-			s.Logger.LogWarn("Transaction conflict, retrying...")
+			s.opts.Logger.LogWarn("Transaction conflict, retrying...")
 			time.Sleep(time.Millisecond)
 			continue
 		}

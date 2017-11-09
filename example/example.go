@@ -12,8 +12,10 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"strconv"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -28,13 +30,23 @@ func main() {
 		log.Fatal("Error retrieving recommended shard count: ", err)
 	}
 
-	state, err := dbstate.NewState("", recommended, true)
+	opts := dbstate.Options{
+		DBOpts:             dbstate.RecommendedBadgerOptions("state"),
+		UseChannelSyncMode: true,
+
+		TrackChannels:  true,
+		TrackMembers:   true,
+		TrackMessages:  true,
+		TrackPresences: true,
+		TrackRoles:     true,
+	}
+
+	state, err := dbstate.NewState(recommended, opts)
 	if err != nil {
 		log.Fatal("Failed initializing state: ", err)
 	}
+
 	State = state
-	state.TrackPresences = true
-	state.TrackMessages = true
 
 	eventCounter := new(int64)
 
@@ -76,7 +88,15 @@ func main() {
 	}
 
 	log.Println("Running....")
-	select {}
+
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+	<-sc
+
+	// Cleanly close down the Discord session.
+	manager.StopAll()
+	state.DB.Close()
+	log.Println("Bye")
 }
 
 func printStats(counter *int64) {

@@ -3,6 +3,7 @@ package dbstate
 import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"github.com/dgraph-io/badger"
 	"testing"
 	// "testing"
 )
@@ -20,7 +21,16 @@ func init() {
 }
 
 func SetupTestState() *State {
-	state, err := NewState("testing_db", 1, false)
+
+	badgerOpts := badger.DefaultOptions
+	badgerOpts.Dir = "testing_db"
+	badgerOpts.ValueDir = "testing_db"
+
+	opts := Options{
+		DBOpts: &badgerOpts,
+	}
+
+	state, err := NewState(1, opts)
 	if err != nil {
 		panic(err)
 	}
@@ -36,7 +46,7 @@ func TestEncodeDecode(t *testing.T) {
 		GuildID: "321",
 	}
 
-	encoded, err := testWorker.encodeData(m)
+	encoded, err := testState.encodeData(nil, m)
 	if err != nil {
 		t.Error("Enc: ", err)
 		return
