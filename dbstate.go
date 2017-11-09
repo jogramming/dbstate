@@ -294,7 +294,7 @@ func (s *State) flushOldDBData() error {
 		delCount = 0
 	}
 
-	s.opts.Logger.LogInfo("Done Flushing old DB data.")
+	s.opts.Logger.LogInfo("Done flushing old DB data.")
 
 	return nil
 }
