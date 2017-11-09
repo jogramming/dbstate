@@ -33,7 +33,7 @@ var (
 
 var (
 	// Used when the loaded db version differs from the one used in this package version
-	ErrDifferentFormatVersion = errors.New("Trying to open database with different format version than the current one")
+	ErrDifferentFormatVersion = errors.New("Trying to open database with different format version than the current one.")
 )
 
 type State struct {
@@ -177,13 +177,13 @@ func (s *State) gcWorker() {
 		case <-t1s.C:
 			s.presenceUpdateFilter.clear()
 		case <-t1m.C:
-			s.opts.Logger.LogInfo("starting badger gc")
+			s.opts.Logger.LogInfo("Starting badger gc...")
 
-			// Enabling this made all the keys suddenly stop working, i think i may be doing something wrong in this regard
+			// Enabling this made all the keys suddenly stop working, I think I may be doing something wrong in this regard.
 			// db.PurgeOlderVersions()
 
 			s.DB.RunValueLogGC(0.5)
-			s.opts.Logger.LogInfo("Done with badger gc")
+			s.opts.Logger.LogInfo("Done with badger gc.")
 		}
 	}
 }
@@ -232,7 +232,7 @@ func (s *State) initDB() error {
 }
 
 func (s *State) flushOldDBData() error {
-	s.opts.Logger.LogInfo("Flushing old db data")
+	s.opts.Logger.LogInfo("Flushing old DB data...")
 
 	// We have to use multiple transactions otherwise it gets too big
 	done := false
@@ -294,31 +294,31 @@ func (s *State) flushOldDBData() error {
 		delCount = 0
 	}
 
-	s.opts.Logger.LogInfo("Done Flushing old db data")
+	s.opts.Logger.LogInfo("Done flushing old DB data.")
 
 	return nil
 }
 
 func initFolder(path string) error {
 	if path == "" {
-		return errors.New("No path specified")
+		return errors.New("No path specified.")
 	}
 
 	if path == "/" {
-		return errors.New("Passed root fs as path, are you trying to break your system?")
+		return errors.New("Passed root FS as path, are you trying to break your system?")
 	}
 
 	err := os.MkdirAll(path, os.ModeDir|os.ModePerm)
-	return errors.WithMessage(err, "Failed creating db folder")
+	return errors.WithMessage(err, "Failed creating db folder.")
 }
 
 // Standard implementation of the logger
 func (s *State) LogWarn(m ...interface{}) {
-	logrus.Warn(append([]interface{}{"[dbstate]: "}, m...)...)
+	logrus.Warn(append([]interface{}{"[DBState]: "}, m...)...)
 }
 func (s *State) LogError(m ...interface{}) {
-	logrus.Error(append([]interface{}{"[dbstate]: "}, m...)...)
+	logrus.Error(append([]interface{}{"[DBState]: "}, m...)...)
 }
 func (s *State) LogInfo(m ...interface{}) {
-	logrus.Info(append([]interface{}{"[dbstate]: "}, m...)...)
+	logrus.Info(append([]interface{}{"[DBState]: "}, m...)...)
 }
