@@ -148,8 +148,11 @@ func (f *presenceUpdateFilter) checkUserID(shardID int, userID string) (checkedR
 			}
 		}
 	}
-
-	f.recentlyProcessedPresenceUpdates[shardID] = append(f.recentlyProcessedPresenceUpdates[shardID], userID)
 	f.mu.RUnlock()
+
+	// Upgrade the lock
+	f.mu.Lock()
+	f.recentlyProcessedPresenceUpdates[shardID] = append(f.recentlyProcessedPresenceUpdates[shardID], userID)
+	f.mu.Unlock()
 	return false
 }
