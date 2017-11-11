@@ -6,11 +6,11 @@ package dbstate
 
 import (
 	"bytes"
-	"encoding/gob"
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/bwmarrin/discordgo"
 	"github.com/dgraph-io/badger"
+	"github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"os"
 	"path/filepath"
@@ -24,7 +24,10 @@ const (
 	VersionPatch = 0
 
 	// The database format version, different versions are incompatible with eachother
-	FormatVersion = 2
+	// pre-v2 were string based keys
+	// v2 introduced compact binary keys
+	// v3 changed the format itself to json
+	FormatVersion = 3
 )
 
 var (
@@ -50,6 +53,8 @@ type State struct {
 
 	// Filters multiple presence updates from the same users in the same moment (by e.g sharing multiple servers with the bot)
 	presenceUpdateFilter *presenceUpdateFilter
+
+	stopChan chan interface{}
 }
 
 type Logger interface {
@@ -63,7 +68,7 @@ type shardWorker struct {
 
 	shardID int
 	buffer  *bytes.Buffer
-	encoder *gob.Encoder
+	encoder *jsoniter.Encoder
 	working bool
 
 	// Used for the channel sync mode
@@ -125,6 +130,7 @@ func RecommendedBadgerOptions(dir string) *badger.Options {
 	return &opts
 }
 
+// NewState creates a new state tracker, or an error if something went wrong
 func NewState(numShards int, options Options) (*State, error) {
 	if options.DBOpts == nil {
 		options.DBOpts = RecommendedBadgerOptions("")
@@ -153,6 +159,7 @@ func NewState(numShards int, options Options) (*State, error) {
 		shards:               shards,
 		memoryState:          &memoryState{},
 		presenceUpdateFilter: &presenceUpdateFilter{numShards: numShards},
+		stopChan:             make(chan interface{}),
 	}
 
 	if options.Logger == nil {
@@ -169,11 +176,21 @@ func NewState(numShards int, options Options) (*State, error) {
 	return s, nil
 }
 
+// Close shuts the tracker down, closing the DB aswell
+func (s *State) Close() {
+	close(s.stopChan)
+	s.DB.Close()
+}
+
 func (s *State) gcWorker() {
 	t1m := time.NewTicker(time.Minute)
 	t1s := time.NewTicker(time.Second)
 	for {
 		select {
+		case <-s.stopChan:
+			t1m.Stop()
+			t1s.Stop()
+			return
 		case <-t1s.C:
 			s.presenceUpdateFilter.clear()
 		case <-t1m.C:
@@ -197,7 +214,7 @@ func (s *State) initWorkers(workers []*shardWorker, run bool) {
 			eventChan: make(chan interface{}, 10),
 		}
 
-		workers[i].encoder = gob.NewEncoder(workers[i].buffer)
+		workers[i].encoder = jsoniter.NewEncoder(workers[i].buffer)
 
 		if run {
 			go workers[i].run()
@@ -217,7 +234,7 @@ func (s *State) initDB() error {
 			meta = &MetaInfo{
 				FormatVersion: FormatVersion,
 			}
-			return s.SetKey(nil, nil, KeyMeta, meta)
+			return s.SetKey(nil, nil, nil, KeyMeta, meta)
 		}
 
 		return err
@@ -232,7 +249,7 @@ func (s *State) initDB() error {
 }
 
 func (s *State) flushOldDBData() error {
-	s.opts.Logger.LogInfo("Flushing old db data")
+	// s.opts.Logger.LogInfo("Flushing old db data")
 
 	// We have to use multiple transactions otherwise it gets too big
 	done := false
@@ -290,7 +307,7 @@ func (s *State) flushOldDBData() error {
 			return err
 		}
 
-		s.opts.Logger.LogInfo("Deleted: ", delCount, ", ", string(curKey[0]), curKey)
+		// s.opts.Logger.LogInfo("Deleted: ", delCount, ", ", string(curKey[0]), curKey)
 		delCount = 0
 	}
 

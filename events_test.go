@@ -2,6 +2,7 @@ package dbstate
 
 import (
 	"github.com/bwmarrin/discordgo"
+	"strconv"
 	"testing"
 )
 
@@ -238,4 +239,36 @@ func TestVoiceStates(t *testing.T) {
 	if fetched.UserID != vs.UserID || fetched.GuildID != vs.GuildID || fetched.Mute != vs.Mute {
 		t.Errorf("mismatched results, got %#v, expected %#v", fetched, vs)
 	}
+}
+
+func BenchmarkPresenceUpdates(b *testing.B) {
+	badgerOpts := RecommendedBadgerOptions("bench_db")
+
+	opts := Options{
+		DBOpts: badgerOpts,
+	}
+
+	state, err := NewState(1, opts)
+	if err != nil {
+		panic(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p := &discordgo.Presence{
+			User: &discordgo.User{
+				ID:       strconv.Itoa(i),
+				Username: "bob",
+			},
+			Status: "online",
+			Nick:   "billy",
+		}
+
+		err := state.shards[0].PresenceAddUpdate(nil, false, p)
+		if err != nil {
+			panic(err)
+		}
+	}
+	b.StopTimer()
+	state.Close()
 }

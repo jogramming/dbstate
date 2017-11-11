@@ -69,6 +69,8 @@ func (s *State) handleEventPreCheck(shardID int, eventInterface interface{}) boo
 func (w *shardWorker) run() {
 	for {
 		select {
+		case <-w.State.stopChan:
+			return
 		case event := <-w.eventChan:
 			err := w.handleEvent(event)
 			if err != nil {

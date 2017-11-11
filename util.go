@@ -2,8 +2,8 @@ package dbstate
 
 import (
 	"bytes"
-	"encoding/gob"
 	"github.com/dgraph-io/badger"
+	"github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"sync"
 	"time"
@@ -19,25 +19,25 @@ const (
 // setKey is a helper to encode and set a get using the provided shards encoder and buffer
 // If tx is nil, will create a new transaction
 func (w *shardWorker) setKey(tx *badger.Txn, key []byte, val interface{}) error {
-	return w.State.SetKey(tx, w.buffer, key, val)
+	return w.State.SetKey(tx, w.buffer, w.encoder, key, val)
 }
 
 func (w *shardWorker) setKeyWithTTL(tx *badger.Txn, key []byte, val interface{}, ttl time.Duration) error {
-	return w.State.SetKeyWithTTL(tx, w.buffer, key, val, ttl)
+	return w.State.SetKeyWithTTL(tx, w.buffer, w.encoder, key, val, ttl)
 }
 
-func (s *State) SetKey(tx *badger.Txn, buffer *bytes.Buffer, key []byte, val interface{}) error {
-	return s.SetKeyWithTTL(tx, buffer, key, val, -1)
+func (s *State) SetKey(tx *badger.Txn, buffer *bytes.Buffer, encoder *jsoniter.Encoder, key []byte, val interface{}) error {
+	return s.SetKeyWithTTL(tx, buffer, encoder, key, val, -1)
 }
 
-func (s *State) SetKeyWithTTL(tx *badger.Txn, buffer *bytes.Buffer, key []byte, val interface{}, ttl time.Duration) error {
+func (s *State) SetKeyWithTTL(tx *badger.Txn, buffer *bytes.Buffer, encoder *jsoniter.Encoder, key []byte, val interface{}, ttl time.Duration) error {
 	if tx == nil {
 		return s.RetryUpdate(func(txn *badger.Txn) error {
-			return s.SetKeyWithTTL(txn, buffer, key, val, ttl)
+			return s.SetKeyWithTTL(txn, buffer, encoder, key, val, ttl)
 		})
 	}
 
-	encoded, err := s.encodeData(buffer, val)
+	encoded, err := s.encodeData(buffer, encoder, val)
 	if err != nil {
 		return errors.WithMessage(err, "EncodeData")
 	}
@@ -47,34 +47,34 @@ func (s *State) SetKeyWithTTL(tx *badger.Txn, buffer *bytes.Buffer, key []byte, 
 	} else {
 		err = tx.Set(key, encoded)
 	}
+
+	if buffer != nil {
+		buffer.Reset()
+	}
+
 	return err
 }
 
 // encodeData encodes the provided value using the provided shards buffer and encoder
-func (s *State) encodeData(buffer *bytes.Buffer, val interface{}) ([]byte, error) {
-	if buffer == nil {
+// the returned byte slice is only valid until the next modification of buffer
+func (s *State) encodeData(buffer *bytes.Buffer, enc *jsoniter.Encoder, val interface{}) ([]byte, error) {
+	if buffer == nil || enc == nil {
 		buffer = new(bytes.Buffer)
+		enc = jsoniter.NewEncoder(buffer)
 	}
 
-	// Reusing encoders gave issues
-	encoder := gob.NewEncoder(buffer)
-	// encoder := w.encoder
-
-	err := encoder.Encode(val)
+	err := enc.Encode(val)
 	if err != nil {
 		buffer.Reset()
 		return nil, err
 	}
 
-	encoded := make([]byte, buffer.Len())
-	_, err = buffer.Read(encoded)
-
+	cop := make([]byte, buffer.Len())
+	_, err = buffer.Read(cop)
 	buffer.Reset()
-	if err != nil {
-		return nil, err
-	}
 
-	return encoded, nil
+	// encoded := buffer.Bytes()
+	return cop, err
 }
 
 // GetKey is a helper for retrieving a key and decoding it into the destination
@@ -90,7 +90,7 @@ func (s *State) GetKey(tx *badger.Txn, key []byte, dest interface{}) error {
 	if err != nil {
 		return err
 	}
-	v, err := item.Value()
+	v, err := item.ValueCopy()
 	if err != nil {
 		return err
 	}
@@ -100,8 +100,7 @@ func (s *State) GetKey(tx *badger.Txn, key []byte, dest interface{}) error {
 
 // DecodeData is a helper for deocding data
 func (s *State) DecodeData(data []byte, dest interface{}) error {
-	decoder := gob.NewDecoder(bytes.NewReader(data))
-	err := decoder.Decode(dest)
+	err := jsoniter.Unmarshal(data, dest)
 	return err
 }
 

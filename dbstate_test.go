@@ -1,11 +1,12 @@
 package dbstate
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/json-iterator/go"
+	// "github.com/alecthomas/binary"
 	"github.com/bwmarrin/discordgo"
-	"github.com/dgraph-io/badger"
 	"testing"
-	// "testing"
 )
 
 var (
@@ -22,12 +23,9 @@ func init() {
 
 func SetupTestState() *State {
 
-	badgerOpts := badger.DefaultOptions
-	badgerOpts.Dir = "testing_db"
-	badgerOpts.ValueDir = "testing_db"
-
+	badgerOpts := RecommendedBadgerOptions("")
 	opts := Options{
-		DBOpts: &badgerOpts,
+		DBOpts: badgerOpts,
 	}
 
 	state, err := NewState(1, opts)
@@ -46,7 +44,7 @@ func TestEncodeDecode(t *testing.T) {
 		GuildID: "321",
 	}
 
-	encoded, err := testState.encodeData(nil, m)
+	encoded, err := testState.encodeData(nil, nil, m)
 	if err != nil {
 		t.Error("Enc: ", err)
 		return
@@ -72,5 +70,47 @@ func AssertFatal(t *testing.T, err error, msg ...interface{}) {
 func AssertErr(t *testing.T, err error, msg ...interface{}) {
 	if err != nil {
 		t.Error(fmt.Sprint(msg...) + ": " + err.Error())
+	}
+}
+
+func BenchmarkEncode(b *testing.B) {
+	testStruct := &discordgo.Presence{
+		User: &discordgo.User{
+			ID:       "123",
+			Username: "bob",
+		},
+		Status: "online",
+		Nick:   "billy",
+	}
+
+	for i := 0; i < b.N; i++ {
+		_, err := (*State)(nil).encodeData(nil, nil, testStruct)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func BenchmarkEncodeReuseBufEnc(b *testing.B) {
+	testStruct := &discordgo.Presence{
+		User: &discordgo.User{
+			ID:       "123",
+			Username: "bob",
+		},
+		Status: "online",
+		Nick:   "billy",
+	}
+
+	var buf bytes.Buffer
+	encoder := jsoniter.NewEncoder(&buf)
+
+	for i := 0; i < b.N; i++ {
+
+		_, err := (*State)(nil).encodeData(&buf, encoder, testStruct)
+		if err != nil {
+			panic(err)
+		}
+
+		buf.Reset()
 	}
 }

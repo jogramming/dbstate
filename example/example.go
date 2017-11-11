@@ -95,7 +95,7 @@ func main() {
 
 	// Cleanly close down the Discord session.
 	manager.StopAll()
-	state.DB.Close()
+	state.Close()
 	log.Println("Bye")
 }
 
