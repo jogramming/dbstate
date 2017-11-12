@@ -66,10 +66,11 @@ type Logger interface {
 type shardWorker struct {
 	State *State
 
-	shardID int
-	buffer  *bytes.Buffer
-	encoder *jsoniter.Encoder
-	working bool
+	shardID      int
+	buffer       *bytes.Buffer
+	decodeBuffer []byte
+	encoder      *jsoniter.Encoder
+	working      bool
 
 	// Used for the channel sync mode
 	eventChan chan interface{}

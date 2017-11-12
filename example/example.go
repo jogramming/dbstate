@@ -13,6 +13,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"sync/atomic"
 	"syscall"
@@ -101,11 +102,19 @@ func main() {
 
 func printStats(counter *int64) {
 	ticker := time.NewTicker(time.Second)
+
+	var previousNumAllocs uint64
+	var previousBAllocs uint64
 	for {
 		<-ticker.C
 
+		var stats runtime.MemStats
+		runtime.ReadMemStats(&stats)
+
 		current := atomic.SwapInt64(counter, 0)
-		logrus.Info("Handled ", current, " events the last second")
+		logrus.Infof("Last second: Handled %4d events, %6d allocs %7dKB allocs", current, (stats.TotalAlloc-previousBAllocs)/1000, stats.Mallocs-previousNumAllocs)
+		previousNumAllocs = stats.Mallocs
+		previousBAllocs = stats.TotalAlloc
 	}
 }
 
@@ -115,7 +124,7 @@ func HandleGuildSize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	g, err := State.Guild(nil, gId)
+	g, err := State.Guild(gId)
 	if err != nil {
 		w.Write([]byte(err.Error() + ": " + gId))
 		return

@@ -284,7 +284,7 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 
 func (w *shardWorker) GuildUpdate(g *discordgo.Guild) error {
 	err := w.State.RetryUpdate(func(txn *badger.Txn) error {
-		current, err := w.State.Guild(txn, g.ID)
+		current, err := w.guild(txn, g.ID)
 		if err != nil {
 			return errors.WithMessage(err, "GuildUpdate")
 		}
@@ -324,7 +324,7 @@ func (w *shardWorker) MemberAdd(txn *badger.Txn, m *discordgo.Member, updateCoun
 	}
 
 	if updateCount {
-		guild, err := w.State.Guild(txn, m.GuildID)
+		guild, err := w.guild(txn, m.GuildID)
 		if err != nil {
 			return errors.WithMessage(err, "Guild")
 		}
@@ -352,7 +352,7 @@ func (w *shardWorker) MemberRemove(txn *badger.Txn, guildID, userID string, upda
 	}
 
 	if updateCount {
-		guild, err := w.State.Guild(txn, guildID)
+		guild, err := w.guild(txn, guildID)
 		if err != nil {
 			return errors.WithMessage(err, "Guild")
 		}
@@ -377,7 +377,7 @@ func (w *shardWorker) ChannelCreateUpdate(txn *badger.Txn, channel *discordgo.Ch
 
 	// Update the channels object on the guild
 	if channel.Type == discordgo.ChannelTypeGuildText && addToGuild {
-		guild, err := w.State.Guild(txn, channel.GuildID)
+		guild, err := w.guild(txn, channel.GuildID)
 		if err != nil {
 			return errors.WithMessage(err, "ChannelUpdate")
 		}
@@ -417,7 +417,7 @@ func (w *shardWorker) ChannelDelete(txn *badger.Txn, channelID string) error {
 		})
 	}
 
-	channel, err := w.State.Channel(txn, channelID)
+	channel, err := w.channel(txn, channelID)
 	if err != nil {
 		if err != badger.ErrKeyNotFound {
 			return err
@@ -429,7 +429,7 @@ func (w *shardWorker) ChannelDelete(txn *badger.Txn, channelID string) error {
 
 	// Update the channels object on the guild
 	if channel.Type == discordgo.ChannelTypeGuildText {
-		guild, err := w.State.Guild(txn, channel.GuildID)
+		guild, err := w.guild(txn, channel.GuildID)
 		if err != nil {
 			return errors.WithMessage(err, "ChannelCreateUpdate")
 		}
@@ -461,7 +461,7 @@ func (w *shardWorker) RoleCreateUpdate(txn *badger.Txn, guildID string, role *di
 	}
 
 	// Update the roles slice on the guild
-	guild, err := w.State.Guild(txn, guildID)
+	guild, err := w.guild(txn, guildID)
 	if err != nil {
 		return errors.WithMessage(err, "Guild")
 	}
@@ -495,7 +495,7 @@ func (w *shardWorker) RoleDelete(txn *badger.Txn, guildID, roleID string) error 
 		})
 	}
 
-	guild, err := w.State.Guild(txn, guildID)
+	guild, err := w.guild(txn, guildID)
 	if err != nil {
 		return errors.WithMessage(err, "Guild")
 	}
@@ -522,7 +522,7 @@ func (w *shardWorker) MessageCreateUpdate(txn *badger.Txn, newMsg *discordgo.Mes
 		})
 	}
 
-	msg, err := w.State.ChannelMessage(txn, newMsg.ChannelID, newMsg.ID)
+	msg, _, err := w.channelMessage(txn, newMsg.ChannelID, newMsg.ID)
 	if err == nil && msg != nil {
 		if newMsg.Content != "" {
 			msg.Content = newMsg.Content
@@ -570,7 +570,7 @@ func (w *shardWorker) EmojisUpdate(txn *badger.Txn, guildID string, emojis []*di
 		})
 	}
 
-	guild, err := w.State.Guild(txn, guildID)
+	guild, err := w.guild(txn, guildID)
 	if err != nil {
 		return errors.WithMessage(err, "Guild")
 	}
@@ -605,7 +605,7 @@ func (w *shardWorker) PresenceAddUpdate(txn *badger.Txn, forceAdd bool, p *disco
 	var current *discordgo.Presence
 	if !forceAdd {
 		var err error
-		current, err = w.State.Presence(txn, p.User.ID)
+		current, err = w.presence(txn, p.User.ID)
 		if err != nil && err != badger.ErrKeyNotFound {
 			return err
 		}
