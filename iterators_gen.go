@@ -77,7 +77,7 @@ func (s *State) IterateGuildMembers(txn *badger.Txn, guildID string, f func(d *d
 
 // IterateChannelMessages Iterates over all *discordgo.Message in state, calling f on them
 // if f returns false then iteration will stop
-func (s *State) IterateChannelMessages(txn *badger.Txn, channelID string, f func(d *discordgo.Message) bool) error {
+func (s *State) IterateChannelMessages(txn *badger.Txn, channelID string, f func(m MessageFlag, d *discordgo.Message) bool) error {
 	if txn == nil {
 		return s.DB.View(func(txn *badger.Txn) error {
 			return s.IterateChannelMessages(txn, channelID, f)
@@ -102,8 +102,10 @@ func (s *State) IterateChannelMessages(txn *badger.Txn, channelID string, f func
 			return err
 		}
 
+		meta := MessageFlag(item.UserMeta())
+
 		// Call the callback
-		if !f(dest) {
+		if !f(meta, dest) {
 			break
 		}
 	}
@@ -112,7 +114,7 @@ func (s *State) IterateChannelMessages(txn *badger.Txn, channelID string, f func
 
 // IterateAllMessages Iterates over all *discordgo.Message in state, calling f on them
 // if f returns false then iteration will stop
-func (s *State) IterateAllMessages(txn *badger.Txn, f func(d *discordgo.Message) bool) error {
+func (s *State) IterateAllMessages(txn *badger.Txn, f func(m MessageFlag, d *discordgo.Message) bool) error {
 	if txn == nil {
 		return s.DB.View(func(txn *badger.Txn) error {
 			return s.IterateAllMessages(txn, f)
@@ -137,8 +139,10 @@ func (s *State) IterateAllMessages(txn *badger.Txn, f func(d *discordgo.Message)
 			return err
 		}
 
+		meta := MessageFlag(item.UserMeta())
+
 		// Call the callback
-		if !f(dest) {
+		if !f(meta, dest) {
 			break
 		}
 	}

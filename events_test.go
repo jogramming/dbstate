@@ -17,7 +17,7 @@ func TestGuilds(t *testing.T) {
 	err := testWorker.GuildCreate(g)
 	AssertFatal(t, err, "failed handling guild create")
 
-	g2, err := testState.Guild(nil, "123")
+	g2, err := testState.Guild("123")
 	AssertFatal(t, err, "failed calling Guild(ID)")
 
 	if g2.ID != g.ID || g2.Name != g.Name || g2.Large != g.Large || g2.MemberCount != g.MemberCount {
@@ -39,7 +39,7 @@ func TestGuilds(t *testing.T) {
 	err = testWorker.GuildDelete("123")
 	AssertFatal(t, err, "failed removing guild")
 
-	if _, err := testState.Guild(nil, "123"); err == nil {
+	if _, err := testState.Guild("123"); err == nil {
 		t.Fatal("guild still there after being deleted")
 	}
 }
@@ -55,7 +55,7 @@ func TestGuildMembers(t *testing.T) {
 	err := testWorker.MemberUpdate(nil, m)
 	AssertFatal(t, err, "failed handling member update")
 
-	m2, err := testState.GuildMember(nil, "321", "123")
+	m2, err := testState.GuildMember("321", "123")
 	AssertFatal(t, err, "failed calling GuildMember(gid, uid)")
 
 	if m2.User.ID != m.User.ID || m2.Nick != m.Nick || len(m2.Roles) != len(m.Roles) || m2.GuildID != m.GuildID {
@@ -83,7 +83,7 @@ func TestGuildMembers(t *testing.T) {
 	err = testWorker.MemberRemove(nil, "321", "123", false)
 	AssertFatal(t, err, "failed removing member")
 
-	if _, err = testState.GuildMember(nil, "321", "123"); err == nil {
+	if _, err = testState.GuildMember("321", "123"); err == nil {
 		t.Fatal("member still there after being removed")
 	}
 }
@@ -101,7 +101,7 @@ func TestGuildChannels(t *testing.T) {
 	AssertFatal(t, testWorker.GuildCreate(g), "failed creating guild")
 	AssertFatal(t, testWorker.ChannelCreateUpdate(nil, c, true), "failed creating channel")
 
-	fetched, err := testState.Channel(nil, "2")
+	fetched, err := testState.Channel("2")
 	AssertFatal(t, err, "failed retrieving channel")
 
 	if fetched.ID != c.ID || fetched.GuildID != c.GuildID || fetched.Type != c.Type {
@@ -109,7 +109,7 @@ func TestGuildChannels(t *testing.T) {
 	}
 
 	AssertFatal(t, testWorker.ChannelDelete(nil, "2"), "failed deleting channel")
-	if _, err = testState.Channel(nil, "2"); err == nil {
+	if _, err = testState.Channel("2"); err == nil {
 		t.Fatal("channel still there after being removed")
 	}
 	AssertErr(t, testWorker.GuildDelete("1"), "failed removing guild")
@@ -129,7 +129,7 @@ func TestGuildRoles(t *testing.T) {
 	AssertFatal(t, testWorker.GuildCreate(g), "failed creating guild")
 	AssertFatal(t, testWorker.RoleCreateUpdate(nil, g.ID, r), "failed creating role")
 
-	gFetched, err := testState.Guild(nil, g.ID)
+	gFetched, err := testState.Guild(g.ID)
 	AssertFatal(t, err, "failed retrieving guild")
 
 	rFetched := gFetched.FindRole(r.ID)
@@ -142,7 +142,7 @@ func TestGuildRoles(t *testing.T) {
 
 	AssertFatal(t, testWorker.RoleDelete(nil, g.ID, r.ID), "failed deleting role")
 
-	gFetched, err = testState.Guild(nil, g.ID)
+	gFetched, err = testState.Guild(g.ID)
 	AssertFatal(t, err, "failed retrieving guild")
 
 	if gFetched.FindRole(r.ID) != nil {
@@ -165,7 +165,7 @@ func TestGuildEmojis(t *testing.T) {
 	AssertFatal(t, testWorker.GuildCreate(g), "failed creating guild")
 	AssertFatal(t, testWorker.EmojisUpdate(nil, g.ID, []*discordgo.Emoji{e}), "failed creating emoji")
 
-	gFetched, err := testState.Guild(nil, g.ID)
+	gFetched, err := testState.Guild(g.ID)
 	AssertFatal(t, err, "failed retrieving guild")
 
 	eFetched := gFetched.FindEmoji(e.ID)
@@ -190,7 +190,7 @@ func TestChannelMessages(t *testing.T) {
 
 	AssertFatal(t, testWorker.MessageCreateUpdate(nil, m), "failed creating message")
 
-	fetched, _, err := testState.ChannelMessage(nil, m.ChannelID, m.ID)
+	fetched, _, err := testState.ChannelMessage(m.ChannelID, m.ID)
 	AssertFatal(t, err, "failed retrieving message")
 
 	if fetched.ID != m.ID || fetched.Content != m.Content || fetched.Author.Username != m.Author.Username || fetched.Author.ID != m.Author.ID {
@@ -199,7 +199,7 @@ func TestChannelMessages(t *testing.T) {
 
 	AssertFatal(t, testWorker.MessageDelete(nil, m.ChannelID, m.ID), "failed deleting message")
 
-	if _, err := testState.ChannelMessage(nil, m.ChannelID, m.ID); err == nil {
+	if _, _, err := testState.ChannelMessage(m.ChannelID, m.ID); err == nil {
 		t.Error("message still exists after being removed from state")
 	}
 
@@ -207,7 +207,7 @@ func TestChannelMessages(t *testing.T) {
 	AssertFatal(t, testWorker.MessageCreateUpdate(nil, m), "failed creating message 2")
 	AssertFatal(t, testWorker.MessageDelete(nil, m.ChannelID, m.ID), "failed deleting message 2")
 
-	fetched, flags, err := testState.ChannelMessage(nil, m.ChannelID, m.ID)
+	fetched, flags, err := testState.ChannelMessage(m.ChannelID, m.ID)
 	AssertFatal(t, err, "failed retrieving message 2 after deletion with KeepDeletedMessages")
 
 	if flags&MessageFlagDeleted == 0 {
@@ -226,7 +226,7 @@ func TestPresences(t *testing.T) {
 
 	AssertFatal(t, testWorker.PresenceAddUpdate(nil, false, p), "failed creating presence")
 
-	fetched, err := testState.Presence(nil, p.User.ID)
+	fetched, err := testState.Presence(p.User.ID)
 	AssertFatal(t, err, "failed retrieving presence")
 
 	if fetched.User.ID != p.User.ID || fetched.Nick != p.Nick || fetched.User.Username != p.User.Username {
@@ -244,7 +244,7 @@ func TestVoiceStates(t *testing.T) {
 
 	AssertFatal(t, testWorker.VoiceStateUpdate(nil, vs), "failed creating voicestate")
 
-	fetched, err := testState.VoiceState(nil, vs.GuildID, vs.UserID)
+	fetched, err := testState.VoiceState(vs.GuildID, vs.UserID)
 	AssertFatal(t, err, "failed retrieving voice state")
 
 	if fetched.UserID != vs.UserID || fetched.GuildID != vs.GuildID || fetched.Mute != vs.Mute {

@@ -27,6 +27,7 @@ type Item struct {
 	Name      string
 	Key       string
 	ExtraArgs []Arg
+	CBMeta    string
 	DestType  string
 }
 
@@ -52,11 +53,13 @@ var Iterators = []Item{
 		ExtraArgs: []Arg{{Name: "channelID", Type: "string"}},
 		Key:       "KeyChannelMessageIteratorPrefix(channelID)",
 		DestType:  "*discordgo.Message",
+		CBMeta:    "MessageFlag",
 	},
 	Item{
 		Name:     "IterateAllMessages",
 		Key:      "[]byte{byte(KeyTypeChannelMessage)}",
 		DestType: "*discordgo.Message",
+		CBMeta:   "MessageFlag",
 	},
 	Item{
 		Name:      "IterateGuildVoiceStates",
@@ -76,7 +79,7 @@ import (
 {{range .}}
 // {{.Name}} Iterates over all {{.DestType}} in state, calling f on them
 // if f returns false then iteration will stop
-func (s *State) {{.Name}}(txn *badger.Txn, {{range .ExtraArgs}}{{.Name}} {{.Type}}, {{end}}f func(d {{.DestType}}) bool) error {
+func (s *State) {{.Name}}(txn *badger.Txn, {{range .ExtraArgs}}{{.Name}} {{.Type}}, {{end}}f func({{if .CBMeta}}m {{.CBMeta}}, {{end}}d {{.DestType}}) bool) error {
 	if txn == nil {
 		return s.DB.View(func(txn *badger.Txn) error {
 			return s.{{.Name}}(txn, {{range .ExtraArgs}}{{.Name}}, {{end}}f)
@@ -99,10 +102,12 @@ func (s *State) {{.Name}}(txn *badger.Txn, {{range .ExtraArgs}}{{.Name}} {{.Type
 		err = s.DecodeData(v, &dest)
 		if err != nil {
 			return err
-		}
+		}{{if .CBMeta}}
+
+		meta := {{.CBMeta}}(item.UserMeta()){{end}}
 
 		// Call the callback
-		if !f(dest) {
+		if !f({{if .CBMeta}}meta, {{end}}dest) {
 			break
 		}
 	}
