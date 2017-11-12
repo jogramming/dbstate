@@ -190,7 +190,7 @@ func TestChannelMessages(t *testing.T) {
 
 	AssertFatal(t, testWorker.MessageCreateUpdate(nil, m), "failed creating message")
 
-	fetched, err := testState.ChannelMessage(nil, m.ChannelID, m.ID)
+	fetched, _, err := testState.ChannelMessage(nil, m.ChannelID, m.ID)
 	AssertFatal(t, err, "failed retrieving message")
 
 	if fetched.ID != m.ID || fetched.Content != m.Content || fetched.Author.Username != m.Author.Username || fetched.Author.ID != m.Author.ID {
@@ -201,6 +201,17 @@ func TestChannelMessages(t *testing.T) {
 
 	if _, err := testState.ChannelMessage(nil, m.ChannelID, m.ID); err == nil {
 		t.Error("message still exists after being removed from state")
+	}
+
+	testState.opts.KeepDeletedMessages = true
+	AssertFatal(t, testWorker.MessageCreateUpdate(nil, m), "failed creating message 2")
+	AssertFatal(t, testWorker.MessageDelete(nil, m.ChannelID, m.ID), "failed deleting message 2")
+
+	fetched, flags, err := testState.ChannelMessage(nil, m.ChannelID, m.ID)
+	AssertFatal(t, err, "failed retrieving message 2 after deletion with KeepDeletedMessages")
+
+	if flags&MessageFlagDeleted == 0 {
+		t.Error("Message deleted flag not set")
 	}
 }
 

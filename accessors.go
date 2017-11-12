@@ -24,7 +24,7 @@ func (s *State) Guild(id string) (*discordgo.Guild, error) {
 
 // GuildWithTx is the same as guild but allows you to pass a transaction
 func (s *State) GuildWithTxn(txn *badger.Txn, id string) (st *discordgo.Guild, err error) {
-	err = s.GetKey(txn, KeyGuild(id), &st)
+	_, err = s.GetKey(txn, KeyGuild(id), &st)
 	return
 }
 
@@ -35,7 +35,7 @@ func (s *State) GuildMember(guildID, userID string) (*discordgo.Member, error) {
 
 // GuildMemberWithTxn is the same as GuildMember but allows you to pass a transaction
 func (s *State) GuildMemberWithTxn(txn *badger.Txn, guildID, userID string) (st *discordgo.Member, err error) {
-	err = s.GetKey(txn, KeyGuildMember(guildID, userID), &st)
+	_, err = s.GetKey(txn, KeyGuildMember(guildID, userID), &st)
 	return
 }
 
@@ -46,18 +46,23 @@ func (s *State) Channel(channelID string) (*discordgo.Channel, error) {
 
 // ChannelWithTxn is the same as channel but allows you to pass a transaction
 func (s *State) ChannelWithTxn(txn *badger.Txn, channelID string) (st *discordgo.Channel, err error) {
-	err = s.GetKey(txn, KeyChannel(channelID), &st)
+	_, err = s.GetKey(txn, KeyChannel(channelID), &st)
 	return
 }
 
 // ChannelMessage returns a message from state
-func (s *State) ChannelMessage(channelID, messageID string) (st *discordgo.Message, deleted bool, err error) {
+func (s *State) ChannelMessage(channelID, messageID string) (st *discordgo.Message, flags MessageFlag, err error) {
 	return s.ChannelMessageWithTxn(nil, channelID, messageID)
 }
 
 // ChannelMessageWithTxn is the same as ChannelMessage but allows you to pass a transaction
-func (s *State) ChannelMessageWithTxn(txn *badger.Txn, channelID, messageID string) (st *discordgo.Message, deleted bool, err error) {
-	err = s.GetKey(txn, KeyChannelMessage(channelID, messageID), &st)
+// Check flags against MessageFlag
+func (s *State) ChannelMessageWithTxn(txn *badger.Txn, channelID, messageID string) (st *discordgo.Message, flags MessageFlag, err error) {
+	var item *badger.Item
+	item, err = s.GetKey(txn, KeyChannelMessage(channelID, messageID), &st)
+	if err == nil {
+		flags = MessageFlag(item.UserMeta())
+	}
 	return
 }
 
@@ -68,7 +73,7 @@ func (s *State) Presence(userID string) (st *discordgo.Presence, err error) {
 
 // PresenceWithTxn is the same as presence but allows you to pass a transaction
 func (s *State) PresenceWithTxn(txn *badger.Txn, userID string) (st *discordgo.Presence, err error) {
-	err = s.GetKey(txn, KeyPresence(userID), &st)
+	_, err = s.GetKey(txn, KeyPresence(userID), &st)
 	return
 }
 
@@ -79,7 +84,7 @@ func (s *State) VoiceState(guildID, userID string) (st *discordgo.VoiceState, er
 
 // VoiceStateWithTxn is the same as VoiceState but allows you to pass a transaction
 func (s *State) VoiceStateWithTxn(txn *badger.Txn, guildID, userID string) (st *discordgo.VoiceState, err error) {
-	err = s.GetKey(txn, KeyVoiceState(guildID, userID), &st)
+	_, err = s.GetKey(txn, KeyVoiceState(guildID, userID), &st)
 	return
 }
 
@@ -87,36 +92,40 @@ func (s *State) VoiceStateWithTxn(txn *badger.Txn, guildID, userID string) (st *
 // Note that members and presences will not be included in this
 // and will have to be queried seperately
 func (w *shardWorker) guild(txn *badger.Txn, id string) (st *discordgo.Guild, err error) {
-	w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyGuild(id), w.decodeBuffer, &st)
+	_, w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyGuild(id), w.decodeBuffer, &st)
 	return
 }
 
 // GuildMember returns a member from the state
 func (w *shardWorker) guildMember(txn *badger.Txn, guildID, userID string) (st *discordgo.Member, err error) {
-	w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyGuildMember(guildID, userID), w.decodeBuffer, &st)
+	_, w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyGuildMember(guildID, userID), w.decodeBuffer, &st)
 	return
 }
 
 // Channel returns a guild channel or private channel from state
 func (w *shardWorker) channel(txn *badger.Txn, channelID string) (st *discordgo.Channel, err error) {
-	w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyChannel(channelID), w.decodeBuffer, &st)
+	_, w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyChannel(channelID), w.decodeBuffer, &st)
 	return
 }
 
 // ChannelMessage returns a message from state
-func (w *shardWorker) channelMessage(txn *badger.Txn, channelID, messageID string) (st *discordgo.Message, deleted bool, err error) {
-	w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyChannelMessage(channelID, messageID), w.decodeBuffer, &st)
+func (w *shardWorker) channelMessage(txn *badger.Txn, channelID, messageID string) (st *discordgo.Message, flags MessageFlag, err error) {
+	var item *badger.Item
+	item, w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyChannelMessage(channelID, messageID), w.decodeBuffer, &st)
+	if err == nil {
+		flags = MessageFlag(item.UserMeta())
+	}
 	return
 }
 
 // Presence returns a presence from state
 func (w *shardWorker) presence(txn *badger.Txn, userID string) (st *discordgo.Presence, err error) {
-	w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyPresence(userID), w.decodeBuffer, &st)
+	_, w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyPresence(userID), w.decodeBuffer, &st)
 	return
 }
 
 // VoiceState returns a VoiceState from state
 func (w *shardWorker) voiceState(txn *badger.Txn, guildID, userID string) (st *discordgo.VoiceState, err error) {
-	w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyVoiceState(guildID, userID), w.decodeBuffer, &st)
+	_, w.decodeBuffer, err = w.State.GetKeyWithBuffer(txn, KeyVoiceState(guildID, userID), w.decodeBuffer, &st)
 	return
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/dgraph-io/badger"
 	"github.com/json-iterator/go"
 	"github.com/pkg/errors"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -108,6 +109,10 @@ type Options struct {
 	// Set to keep old messages in state from previous runs
 	KeepOldMessagesOnStart bool
 
+	// Set to keep deleted messages in state, they will stil expire after MessageTTL
+	// The deleted return value of ChannelMessage will be set
+	KeepDeletedMessages bool
+
 	// Custom logger to use, the state itself implements this so it defaults to state if nil
 	Logger Logger
 }
@@ -137,7 +142,8 @@ func NewState(numShards int, options Options) (*State, error) {
 		options.DBOpts = RecommendedBadgerOptions("")
 	}
 
-	err := initFolder(options.DBOpts.Dir)
+	err := initFolder(options.DBOpts.Dir, !options.KeepOldMessagesOnStart)
+
 	if err != nil {
 		return nil, errors.WithMessage(err, "InitFolder")
 	}
@@ -229,7 +235,7 @@ type MetaInfo struct {
 
 func (s *State) initDB() error {
 	var meta *MetaInfo
-	err := s.GetKey(nil, KeyMeta, &meta)
+	_, err := s.GetKey(nil, KeyMeta, &meta)
 	if err != nil {
 		if err == badger.ErrKeyNotFound {
 			meta = &MetaInfo{
@@ -245,8 +251,12 @@ func (s *State) initDB() error {
 		return ErrDifferentFormatVersion
 	}
 
-	err = s.flushOldDBData()
-	return errors.WithMessage(err, "flushOldDBData")
+	if s.opts.KeepOldMessagesOnStart {
+		err = s.flushOldDBData()
+		return errors.WithMessage(err, "flushOldDBData")
+	}
+
+	return nil
 }
 
 func (s *State) flushOldDBData() error {
@@ -318,7 +328,17 @@ func (s *State) flushOldDBData() error {
 	return nil
 }
 
-func initFolder(path string) error {
+func initFolder(path string, removeAll bool) error {
+	err := os.MkdirAll(path, os.ModeDir|os.ModePerm)
+	if err != nil {
+		return errors.WithMessage(err, "Failed creating db folder.")
+	}
+
+	if !removeAll {
+		// Dont do anymore now
+		return nil
+	}
+
 	if path == "" {
 		return errors.New("No path specified.")
 	}
@@ -327,8 +347,64 @@ func initFolder(path string) error {
 		return errors.New("Passed root FS as path, are you trying to break your system?")
 	}
 
-	err := os.MkdirAll(path, os.ModeDir|os.ModePerm)
-	return errors.WithMessage(err, "Failed creating db folder.")
+	// If were not keeping any old data just destroy the entire datase which is much quicker than individuall deletinge
+	// each entry
+	if _, err := os.Stat(path); err == nil {
+		err := destroyDBFolder(path)
+		if err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	return nil
+}
+
+func destroyDBFolder(path string) error {
+	if _, err := os.Stat(path + "_tmp"); err == nil {
+		return errors.New(path + "_tmp folder already exists")
+	}
+
+	// Rename it temporarily because removing isn't instant sometimes on windows?
+	// and this needs to be instant.
+	err := os.Rename(path, path+"_tmp")
+	if err != nil {
+		return err
+	}
+
+	err = rmDir(path + "_tmp")
+	if err != nil {
+		return err
+	}
+
+	return os.Remove(path + "_tmp")
+}
+
+// rmDir recursively deletes a directory and all it's contents
+func rmDir(path string) error {
+	dir, err := ioutil.ReadDir(path)
+	if err != nil {
+		return err
+	}
+
+	for _, f := range dir {
+		fPath := filepath.Join(path, f.Name())
+
+		if f.IsDir() {
+			err := rmDir(fPath)
+			if err != nil {
+				return err
+			}
+		}
+
+		err := os.Remove(fPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Standard implementation of the logger

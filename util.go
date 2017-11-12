@@ -13,21 +13,24 @@ type MessageFlag byte
 
 const (
 	MessageFlagDeleted MessageFlag = 1 << iota
-	MessageFlagOld
 )
 
 // setKey is a helper to encode and set a get using the provided shards encoder and buffer
 // If tx is nil, will create a new transaction
-func (w *shardWorker) setKey(tx *badger.Txn, key []byte, val interface{}) error {
-	return w.State.SetKey(tx, w.buffer, w.encoder, key, val)
+func (w *shardWorker) setKey(txn *badger.Txn, key []byte, val interface{}) error {
+	return w.State.SetKey(txn, w.buffer, w.encoder, key, val)
 }
 
-func (w *shardWorker) setKeyWithTTL(tx *badger.Txn, key []byte, val interface{}, ttl time.Duration) error {
-	return w.State.SetKeyWithTTL(tx, w.buffer, w.encoder, key, val, ttl)
+func (w *shardWorker) setKeyWithMeta(txn *badger.Txn, key []byte, val interface{}, meta byte) error {
+	return w.State.SetKeyWithMeta(txn, w.buffer, w.encoder, key, val, meta)
 }
 
-func (s *State) SetKey(tx *badger.Txn, buffer *bytes.Buffer, encoder *jsoniter.Encoder, key []byte, val interface{}) error {
-	return s.SetKeyWithTTL(tx, buffer, encoder, key, val, -1)
+func (w *shardWorker) setKeyWithTTL(txn *badger.Txn, key []byte, val interface{}, ttl time.Duration) error {
+	return w.State.SetKeyWithTTL(txn, w.buffer, w.encoder, key, val, ttl)
+}
+
+func (s *State) SetKey(txn *badger.Txn, buffer *bytes.Buffer, encoder *jsoniter.Encoder, key []byte, val interface{}) error {
+	return s.SetKeyWithTTL(txn, buffer, encoder, key, val, -1)
 }
 
 func (s *State) SetKeyWithTTL(tx *badger.Txn, buffer *bytes.Buffer, encoder *jsoniter.Encoder, key []byte, val interface{}, ttl time.Duration) error {
@@ -48,6 +51,26 @@ func (s *State) SetKeyWithTTL(tx *badger.Txn, buffer *bytes.Buffer, encoder *jso
 		err = tx.Set(key, encoded)
 	}
 
+	if buffer != nil {
+		buffer.Reset()
+	}
+
+	return err
+}
+
+func (s *State) SetKeyWithMeta(tx *badger.Txn, buffer *bytes.Buffer, encoder *jsoniter.Encoder, key []byte, val interface{}, meta byte) error {
+	if tx == nil {
+		return s.RetryUpdate(func(txn *badger.Txn) error {
+			return s.SetKeyWithMeta(txn, buffer, encoder, key, val, meta)
+		})
+	}
+
+	encoded, err := s.encodeData(buffer, encoder, val)
+	if err != nil {
+		return errors.WithMessage(err, "EncodeData")
+	}
+
+	err = tx.SetWithMeta(key, encoded, meta)
 	if buffer != nil {
 		buffer.Reset()
 	}
@@ -79,53 +102,56 @@ func (s *State) encodeData(buffer *bytes.Buffer, enc *jsoniter.Encoder, val inte
 
 // GetKey is a helper for retrieving a key and decoding it into the destination
 // If tx is nil, will create a new transaction
-func (s *State) GetKey(txn *badger.Txn, key []byte, dest interface{}) error {
+func (s *State) GetKey(txn *badger.Txn, key []byte, dest interface{}) (item *badger.Item, err error) {
 	if txn == nil {
-		return s.DB.View(func(txn *badger.Txn) error {
-			return s.GetKey(txn, key, dest)
+		err = s.DB.View(func(txn *badger.Txn) error {
+			item, err = s.GetKey(txn, key, dest)
+			return err
 		})
+
+		return
 	}
 
-	item, err := txn.Get(key)
+	item, err = txn.Get(key)
 	if err != nil {
-		return err
+		return
 	}
 
 	buf := make([]byte, item.EstimatedSize())
 
 	v, err := item.ValueCopy(buf)
 	if err != nil {
-		return err
+		return
 	}
 
-	return s.DecodeData(v, dest)
+	err = s.DecodeData(v, dest)
+	return
 }
 
 // GetKeyWithBuffer is the same as GetKey but allows you to reuse the buffer
 // The buffer may need to grow, in which case it will return a new one
-func (s *State) GetKeyWithBuffer(txn *badger.Txn, key []byte, buffer []byte, dest interface{}) ([]byte, error) {
+func (s *State) GetKeyWithBuffer(txn *badger.Txn, key []byte, buffer []byte, dest interface{}) (item *badger.Item, newBuffer []byte, err error) {
 	if txn == nil {
-		err := s.DB.View(func(txn *badger.Txn) error {
-			var err error
-			buffer, err = s.GetKeyWithBuffer(txn, key, buffer, dest)
+		err = s.DB.View(func(txn *badger.Txn) error {
+			item, buffer, err = s.GetKeyWithBuffer(txn, key, buffer, dest)
 			return err
 		})
 
-		return buffer, err
+		return
 	}
 
-	item, err := txn.Get(key)
+	item, err = txn.Get(key)
 	if err != nil {
-		return buffer, err
+		return item, buffer, err
 	}
 
 	v, err := item.ValueCopy(buffer)
 	if err != nil {
-		return buffer, err
+		return item, buffer, err
 	}
 
 	err = s.DecodeData(v, dest)
-	return v, err
+	return item, v, err
 }
 
 // DecodeData is a helper for deocding data

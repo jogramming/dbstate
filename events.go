@@ -559,7 +559,20 @@ func (w *shardWorker) MessageDelete(txn *badger.Txn, channelID, messageID string
 		})
 	}
 
-	return txn.Delete([]byte(KeyChannelMessage(channelID, messageID)))
+	if !w.State.opts.KeepDeletedMessages {
+		return txn.Delete([]byte(KeyChannelMessage(channelID, messageID)))
+	}
+
+	current, flags, err := w.channelMessage(txn, channelID, messageID)
+	if err != nil {
+		if err == badger.ErrKeyNotFound {
+			return nil
+		}
+		return err
+	}
+
+	flags |= MessageFlagDeleted
+	return w.setKeyWithMeta(txn, KeyChannelMessage(channelID, messageID), current, byte(flags))
 }
 
 // RoleDelete removes a role from state
