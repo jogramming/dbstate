@@ -167,7 +167,7 @@ func HandleIterateMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	count := int64(0)
-	State.IterateChannelMessages(nil, cID, func(m *discordgo.Message) bool {
+	State.IterateChannelMessages(nil, cID, func(flags dbstate.MessageFlag, m *discordgo.Message) bool {
 		w.Write([]byte(m.ID + ": " + m.Author.Username + ": " + m.ContentWithMentionsReplaced() + "\n"))
 		count++
 		return true
