@@ -1,8 +1,8 @@
 package dbstate
 
 import (
-	"github.com/bwmarrin/discordgo"
 	"github.com/dgraph-io/badger"
+	"github.com/jonas747/discordgo"
 )
 
 // IterateGuilds Iterates over all *discordgo.Guild in state, calling f on them

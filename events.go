@@ -2,8 +2,8 @@ package dbstate
 
 import (
 	"fmt"
-	"github.com/bwmarrin/discordgo"
 	"github.com/dgraph-io/badger"
+	"github.com/jonas747/discordgo"
 	"github.com/pkg/errors"
 	"reflect"
 	"time"

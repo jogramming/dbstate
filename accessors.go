@@ -1,8 +1,8 @@
 package dbstate
 
 import (
-	"github.com/bwmarrin/discordgo"
 	"github.com/dgraph-io/badger"
+	"github.com/jonas747/discordgo"
 )
 
 // SelfUser returns the current user from the ready payload,

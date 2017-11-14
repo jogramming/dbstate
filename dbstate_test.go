@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/json-iterator/go"
 	// "github.com/alecthomas/binary"
-	"github.com/bwmarrin/discordgo"
+	"github.com/jonas747/discordgo"
 	"testing"
 )
 
