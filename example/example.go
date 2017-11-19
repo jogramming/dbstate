@@ -112,7 +112,7 @@ func printStats(counter *int64) {
 		runtime.ReadMemStats(&stats)
 
 		current := atomic.SwapInt64(counter, 0)
-		logrus.Infof("Last second: Handled %4d events, %6d allocs %7dKB allocs", current, (stats.TotalAlloc-previousBAllocs)/1000, stats.Mallocs-previousNumAllocs)
+		logrus.Infof("Last second: Handled %4d events, %6d allocs %7dKB allocs, current: %dMB", current, (stats.TotalAlloc-previousBAllocs)/1000, stats.Mallocs-previousNumAllocs, stats.Alloc/1000000)
 		previousNumAllocs = stats.Mallocs
 		previousBAllocs = stats.TotalAlloc
 	}
@@ -167,7 +167,7 @@ func HandleIterateMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	count := int64(0)
-	State.IterateChannelMessages(nil, cID, func(m *discordgo.Message) bool {
+	State.IterateChannelMessages(nil, cID, func(flags dbstate.MessageFlag, m *discordgo.Message) bool {
 		w.Write([]byte(m.ID + ": " + m.Author.Username + ": " + m.ContentWithMentionsReplaced() + "\n"))
 		count++
 		return true

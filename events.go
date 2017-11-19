@@ -11,8 +11,8 @@ import (
 
 // HandleEventChannelSynced handles an incoming event
 //
-// Use this as opposed to HandleEventMutexSynced if you're okay with other
-// handlers being called before the state has been updated
+// Use this as opposed to HandleEventMutexSynced if you're okay with
+// this function returning before the state has actually been updated from the event
 func (s *State) HandleEventChannelSynced(shardID int, eventInterface interface{}) error {
 	if !s.handleEventPreCheck(shardID, eventInterface) {
 		return nil
@@ -25,7 +25,7 @@ func (s *State) HandleEventChannelSynced(shardID int, eventInterface interface{}
 
 // HandleEventMutexSynced handles an incoming event
 //
-// Use this ass opposed to HandleEventChannelSynced
+// Use this as opposed to HandleEventChannelSynced
 // if you need make sure the state has been updated by the time this returns
 func (s *State) HandleEventMutexSynced(shardID int, eventInterface interface{}) error {
 	if !s.handleEventPreCheck(shardID, eventInterface) {
@@ -33,8 +33,8 @@ func (s *State) HandleEventMutexSynced(shardID int, eventInterface interface{}) 
 	}
 
 	w := s.shards[shardID]
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.MU.Lock()
+	defer w.MU.Unlock()
 
 	return w.handleEvent(eventInterface)
 }
@@ -253,33 +253,112 @@ func (w *shardWorker) GuildCreate(g *discordgo.Guild) error {
 			}
 		}
 
-		// Load members
-		for _, m := range g.Members {
-			m.GuildID = g.ID
-			err := w.MemberUpdate(txn, m)
-			if err != nil {
-				return err
-			}
-		}
-
-		// Load presences
-		if w.State.opts.TrackPresences {
-			for _, p := range g.Presences {
-				err := w.PresenceAddUpdate(txn, true, p)
-				if err != nil {
-					return err
-				}
-			}
-		}
-
 		return nil
 	})
+
+	if w.State.opts.TrackMembers {
+		err = w.LoadMembers(g.ID, g.Members)
+		if err != nil {
+			return err
+		}
+	}
+
+	if w.State.opts.TrackPresences {
+		err = w.LoadPresences(g.Presences)
+		if err != nil {
+			return err
+		}
+	}
 
 	if len(g.Members) > 1000 {
 		w.State.opts.Logger.LogInfo(fmt.Sprintf("Handled %d members in %s", len(g.Members), time.Since(started)))
 	}
 
 	return err
+}
+
+// LoadMembers Loads the members using multiple transactions to avoid going above the tx limit
+func (w *shardWorker) LoadMembers(gID string, members []*discordgo.Member) error {
+	i := 0
+
+	for {
+
+		err := w.State.RetryUpdate(func(txn *badger.Txn) error {
+			// Update the members until we either have gone through the member slice or
+			// we have updates more than 1k members
+			startedI := i
+			iCop := i
+			for ; iCop < len(members); iCop++ {
+
+				m := members[iCop]
+				m.GuildID = gID
+
+				err := w.MemberUpdate(txn, m)
+				if err != nil {
+					return err
+				}
+
+				if iCop-startedI >= 1000 {
+					i = iCop + 1
+					return nil
+				}
+			}
+
+			// Done
+			i = iCop
+			return nil
+		})
+
+		if err != nil {
+			return err
+		}
+
+		// Also done
+		if i >= len(members) {
+			return nil
+		}
+	}
+}
+
+// LoadPresences Loads the presences using multiple transactions to avoid going above the tx limit
+func (w *shardWorker) LoadPresences(presences []*discordgo.Presence) error {
+	i := 0
+
+	for {
+
+		err := w.State.RetryUpdate(func(txn *badger.Txn) error {
+			// Update the presences until we either have gone through the presence slice or
+			// we have updated more than 1k presences
+			startedI := i
+			iCop := i
+			for ; iCop < len(presences); iCop++ {
+
+				p := presences[iCop]
+				err := w.PresenceAddUpdate(txn, true, p)
+				if err != nil {
+					return err
+				}
+
+				if iCop-startedI >= 1000 {
+					i = iCop + 1
+					return nil
+				}
+			}
+
+			// Done
+			i = iCop
+			return nil
+		})
+
+		if err != nil {
+			return err
+		}
+
+		// Also done
+		if i >= len(presences) {
+			return nil
+		}
+	}
 }
 
 func (w *shardWorker) GuildUpdate(g *discordgo.Guild) error {

@@ -43,6 +43,11 @@ var Iterators = []Item{
 		DestType: "*discordgo.Guild",
 	},
 	Item{
+		Name:     "IteratePresences",
+		Key:      "[]byte{byte(KeyTypePresence)}",
+		DestType: "*discordgo.Presence",
+	},
+	Item{
 		Name:      "IterateGuildMembers",
 		ExtraArgs: []Arg{{Name: "guildID", Type: "string"}},
 		Key:       "KeyGuildMembersIteratorPrefix(guildID)",
