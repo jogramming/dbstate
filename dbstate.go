@@ -21,13 +21,14 @@ import (
 
 const (
 	VersionMajor = 0
-	VersionMinor = 1
+	VersionMinor = 2
 	VersionPatch = 0
 
 	// The database format version, different versions are incompatible with eachother
-	// pre-v2 were string based keys
-	// v2 introduced compact binary keys
-	// v3 changed the format itself to json
+	// Changes over the versions:
+	// pre-v2: were string based keys
+	// v2: introduced compact binary keys
+	// v3: changed the format itself to json
 	FormatVersion = 3
 )
 
@@ -77,7 +78,7 @@ type shardWorker struct {
 	eventChan chan interface{}
 
 	// Used for the mutex sync mode
-	mu *sync.Mutex
+	MU *sync.Mutex
 }
 
 // Small in memory state that holds a small amount of information
@@ -119,6 +120,8 @@ type Options struct {
 
 // ReommendedBadgerOptions returns the recommended options for badger
 // to be used
+// Read the function source for information about why certain options are set
+// To understand the options even more you need to read up on LSM trees
 // This is mostly TODO and requires more profiling
 func RecommendedBadgerOptions(dir string) *badger.Options {
 	opts := badger.DefaultOptions
@@ -129,6 +132,10 @@ func RecommendedBadgerOptions(dir string) *badger.Options {
 
 	opts.Dir = dir
 	opts.ValueDir = dir
+
+	// Determined after some testing that this amount is the best for this use case
+	// This is mostly on lower end systems, if you're on a higher end system and handling a larger load, increasing this may improve performance
+	opts.MaxTableSize = 64 << 18
 
 	// Disable this for faster writes
 	opts.SyncWrites = false

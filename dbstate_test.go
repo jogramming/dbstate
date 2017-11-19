@@ -3,6 +3,7 @@ package dbstate
 import (
 	"bytes"
 	"fmt"
+	"github.com/dgraph-io/badger"
 	"github.com/json-iterator/go"
 	// "github.com/alecthomas/binary"
 	"github.com/bwmarrin/discordgo"
@@ -113,4 +114,19 @@ func BenchmarkEncodeReuseBufEnc(b *testing.B) {
 
 		buf.Reset()
 	}
+}
+
+func DeleteAllWithPrefix(prefix []byte) {
+	testState.DB.Update(func(txn *badger.Txn) error {
+		// Scan over the prefix
+		opts := badger.DefaultIteratorOptions
+		it := txn.NewIterator(opts)
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+
+			txn.Delete(item.Key())
+		}
+
+		return nil
+	})
 }

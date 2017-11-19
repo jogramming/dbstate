@@ -112,7 +112,7 @@ func printStats(counter *int64) {
 		runtime.ReadMemStats(&stats)
 
 		current := atomic.SwapInt64(counter, 0)
-		logrus.Infof("Last second: Handled %4d events, %6d allocs %7dKB allocs", current, (stats.TotalAlloc-previousBAllocs)/1000, stats.Mallocs-previousNumAllocs)
+		logrus.Infof("Last second: Handled %4d events, %6d allocs %7dKB allocs, current: %dMB", current, (stats.TotalAlloc-previousBAllocs)/1000, stats.Mallocs-previousNumAllocs, stats.Alloc/1000000)
 		previousNumAllocs = stats.Mallocs
 		previousBAllocs = stats.TotalAlloc
 	}

@@ -283,3 +283,55 @@ func BenchmarkPresenceUpdates(b *testing.B) {
 	b.StopTimer()
 	state.Close()
 }
+
+func TestLoadMembers(t *testing.T) {
+
+	members := make([]*discordgo.Member, 2000)
+	for i := 0; i < len(members); i++ {
+		members[i] = &discordgo.Member{
+			User: &discordgo.User{
+				ID: strconv.FormatInt(int64(i+1), 10),
+			},
+			GuildID: "1",
+		}
+	}
+
+	err := testWorker.LoadMembers("1", members)
+	AssertErr(t, err, "Failed loading members")
+
+	n := 0
+	testState.IterateGuildMembers(nil, "1", func(m *discordgo.Member) bool {
+		n++
+		return true
+	})
+
+	if n != len(members) {
+		t.Fatal("Incorrect number of members loaded: ", n)
+	}
+}
+
+func TestLoadPresences(t *testing.T) {
+	DeleteAllWithPrefix([]byte{byte(KeyTypePresence)})
+
+	presences := make([]*discordgo.Presence, 2000)
+	for i := 0; i < len(presences); i++ {
+		presences[i] = &discordgo.Presence{
+			User: &discordgo.User{
+				ID: strconv.FormatInt(int64(i+10), 10),
+			},
+		}
+	}
+
+	err := testWorker.LoadPresences(presences)
+	AssertErr(t, err, "Failed loading presences")
+
+	n := 0
+	testState.IteratePresences(nil, func(p *discordgo.Presence) bool {
+		n++
+		return true
+	})
+
+	if n != len(presences) {
+		t.Fatal("Incorrect number of presences loaded: ", n)
+	}
+}
