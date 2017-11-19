@@ -211,3 +211,9 @@ func (f *presenceUpdateFilter) checkUserID(shardID int, userID string) (checkedR
 	f.mu.Unlock()
 	return false
 }
+
+// IsNotFound returns true if the error was a result of the object/key not being found
+// errors may change in the future so using this is preferred over checking against badger.ErrKeyNotFound manually
+func IsNotFound(err error) bool {
+	return err == badger.ErrKeyNotFound
+}
