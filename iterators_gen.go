@@ -40,6 +40,41 @@ func (s *State) IterateGuilds(txn *badger.Txn, f func(d *discordgo.Guild) bool) 
 	return nil
 }
 
+// IteratePresences Iterates over all *discordgo.Presence in state, calling f on them
+// if f returns false then iteration will stop
+func (s *State) IteratePresences(txn *badger.Txn, f func(d *discordgo.Presence) bool) error {
+	if txn == nil {
+		return s.DB.View(func(txn *badger.Txn) error {
+			return s.IteratePresences(txn, f)
+		})
+	}
+
+	// Scan over the prefix
+	prefix := []byte{byte(KeyTypePresence)}
+
+	opts := badger.DefaultIteratorOptions
+	it := txn.NewIterator(opts)
+	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+		item := it.Item()
+		v, err := item.Value()
+		if err != nil {
+			return err
+		}
+
+		var dest *discordgo.Presence
+		err = s.DecodeData(v, &dest)
+		if err != nil {
+			return err
+		}
+
+		// Call the callback
+		if !f(dest) {
+			break
+		}
+	}
+	return nil
+}
+
 // IterateGuildMembers Iterates over all *discordgo.Member in state, calling f on them
 // if f returns false then iteration will stop
 func (s *State) IterateGuildMembers(txn *badger.Txn, guildID string, f func(d *discordgo.Member) bool) error {
@@ -183,3 +218,4 @@ func (s *State) IterateGuildVoiceStates(txn *badger.Txn, guildID string, f func(
 	}
 	return nil
 }
+
