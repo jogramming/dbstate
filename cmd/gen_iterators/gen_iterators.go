@@ -24,11 +24,13 @@ func main() {
 }
 
 type Item struct {
-	Name      string
-	Key       string
-	ExtraArgs []Arg
-	CBMeta    string
-	DestType  string
+	Name            string
+	Key             string
+	ExtraArgs       []Arg
+	CBMeta          string
+	DestType        string
+	IteratorOptions string
+	Seek            string
 }
 
 type Arg struct {
@@ -59,6 +61,28 @@ var Iterators = []Item{
 		Key:       "KeyChannelMessageIteratorPrefix(channelID)",
 		DestType:  "*discordgo.Message",
 		CBMeta:    "MessageFlag",
+	},
+	Item{
+		Name:      "IterateChannelMessagesNewerFirst",
+		ExtraArgs: []Arg{{Name: "channelID", Type: "string"}},
+		Key:       `KeyChannelMessageIteratorPrefix(channelID)`,
+		DestType:  "*discordgo.Message",
+		CBMeta:    "MessageFlag",
+		IteratorOptions: `
+	opts.Reverse = true
+`,
+		Seek: `
+	seek = make([]byte, 17)
+	copy(seek, prefix)
+	// Seek to the last possible message in this channel
+	seek[9] = 0xff
+	seek[10] = 0xff
+	seek[11] = 0xff
+	seek[12] = 0xff
+	seek[13] = 0xff
+	seek[14] = 0xff
+	seek[15] = 0xff
+	seek[16] = 0xff`,
 	},
 	Item{
 		Name:     "IterateAllMessages",
@@ -93,10 +117,11 @@ func (s *State) {{.Name}}(txn *badger.Txn, {{range .ExtraArgs}}{{.Name}} {{.Type
 
 	// Scan over the prefix
 	prefix := {{.Key}}
+	seek := prefix{{.Seek}}
 
-	opts := badger.DefaultIteratorOptions
+	opts := badger.DefaultIteratorOptions{{.IteratorOptions}}
 	it := txn.NewIterator(opts)
-	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+	for it.Seek(seek); it.ValidForPrefix(prefix); it.Next() {
 		item := it.Item()
 		v, err := item.Value()
 		if err != nil {

@@ -21,6 +21,7 @@ const (
 	KeyTypeChannelMessage KeyType = 'm'
 	KeyTypePresence       KeyType = 'p'
 	KeyTypeVoiceState     KeyType = 'v'
+	KeyTypeLastMessage    KeyType = 'l'
 )
 
 func KeyGuild(guildID string) []byte {
@@ -30,7 +31,7 @@ func KeyGuild(guildID string) []byte {
 	buf[0] = byte(KeyTypeGuild)
 
 	parsed, _ := strconv.ParseUint(guildID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[1:], parsed)
+	binary.BigEndian.PutUint64(buf[1:], parsed)
 
 	return buf
 }
@@ -42,10 +43,10 @@ func KeyGuildMember(guildID, userID string) []byte {
 	buf[0] = byte(KeyTypeMember)
 
 	parsedG, _ := strconv.ParseUint(guildID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[1:], parsedG)
+	binary.BigEndian.PutUint64(buf[1:], parsedG)
 
 	parsedM, _ := strconv.ParseUint(userID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[9:], parsedM)
+	binary.BigEndian.PutUint64(buf[9:], parsedM)
 
 	return buf
 }
@@ -55,7 +56,7 @@ func KeyGuildMembersIteratorPrefix(guildID string) []byte {
 	buf[0] = byte(KeyTypeMember)
 
 	parsedG, _ := strconv.ParseUint(guildID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[1:], parsedG)
+	binary.BigEndian.PutUint64(buf[1:], parsedG)
 
 	return buf
 }
@@ -66,7 +67,7 @@ func KeyChannel(channelID string) []byte {
 	buf[0] = byte(KeyTypeChannel)
 
 	parsedC, _ := strconv.ParseUint(channelID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[1:], parsedC)
+	binary.BigEndian.PutUint64(buf[1:], parsedC)
 
 	return buf
 }
@@ -78,10 +79,10 @@ func KeyChannelMessage(channelID, messageID string) []byte {
 	buf[0] = byte(KeyTypeChannelMessage)
 
 	parsedC, _ := strconv.ParseUint(channelID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[1:], parsedC)
+	binary.BigEndian.PutUint64(buf[1:], parsedC)
 
 	parsedM, _ := strconv.ParseUint(messageID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[9:], parsedM)
+	binary.BigEndian.PutUint64(buf[9:], parsedM)
 
 	return buf
 }
@@ -92,7 +93,7 @@ func KeyChannelMessageIteratorPrefix(channelID string) []byte {
 	buf[0] = byte(KeyTypeChannelMessage)
 
 	parsedC, _ := strconv.ParseUint(channelID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[1:], parsedC)
+	binary.BigEndian.PutUint64(buf[1:], parsedC)
 
 	return buf
 }
@@ -103,7 +104,7 @@ func KeyPresence(userID string) []byte {
 	buf[0] = byte(KeyTypePresence)
 
 	parsedU, _ := strconv.ParseUint(userID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[1:], parsedU)
+	binary.BigEndian.PutUint64(buf[1:], parsedU)
 
 	return buf
 }
@@ -114,10 +115,10 @@ func KeyVoiceState(guildID, userID string) []byte {
 	buf[0] = byte(KeyTypeVoiceState)
 
 	parsedG, _ := strconv.ParseUint(guildID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[1:], parsedG)
+	binary.BigEndian.PutUint64(buf[1:], parsedG)
 
 	parsedU, _ := strconv.ParseUint(userID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[9:], parsedU)
+	binary.BigEndian.PutUint64(buf[9:], parsedU)
 
 	return buf
 }
@@ -128,7 +129,7 @@ func KeyVoiceStateIteratorPrefix(guildID string) []byte {
 	buf[0] = byte(KeyTypeVoiceState)
 
 	parsedG, _ := strconv.ParseUint(guildID, 10, 64)
-	binary.LittleEndian.PutUint64(buf[1:], parsedG)
+	binary.BigEndian.PutUint64(buf[1:], parsedG)
 
 	return buf
 }

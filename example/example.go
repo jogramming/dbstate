@@ -80,6 +80,7 @@ func main() {
 		http.HandleFunc("/gs", HandleGuildSize)
 		http.HandleFunc("/g", HandleIterateGuilds)
 		http.HandleFunc("/msgs", HandleIterateMessages)
+		http.HandleFunc("/newmsgs", HandleIterateMessagesNew)
 		log.Fatal(http.ListenAndServe(":7441", nil))
 	}()
 
@@ -168,6 +169,21 @@ func HandleIterateMessages(w http.ResponseWriter, r *http.Request) {
 
 	count := int64(0)
 	State.IterateChannelMessages(nil, cID, func(flags dbstate.MessageFlag, m *discordgo.Message) bool {
+		w.Write([]byte(m.ID + ": " + m.Author.Username + ": " + m.ContentWithMentionsReplaced() + "\n"))
+		count++
+		return true
+	})
+	w.Write([]byte("Total: " + strconv.FormatInt(count, 10) + "\n"))
+}
+
+func HandleIterateMessagesNew(w http.ResponseWriter, r *http.Request) {
+	cID := r.URL.Query().Get("channel")
+	if cID == "" {
+		return
+	}
+
+	count := int64(0)
+	State.IterateChannelMessagesNewerFirst(nil, cID, func(flags dbstate.MessageFlag, m *discordgo.Message) bool {
 		w.Write([]byte(m.ID + ": " + m.Author.Username + ": " + m.ContentWithMentionsReplaced() + "\n"))
 		count++
 		return true

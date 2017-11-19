@@ -55,6 +55,12 @@ func (s *State) ChannelMessage(channelID, messageID string) (st *discordgo.Messa
 	return s.ChannelMessageWithTxn(nil, channelID, messageID)
 }
 
+// MessageWithMeta includes some  message meta with a message
+type MessageWithMeta struct {
+	*discordgo.Message
+	Deleted bool
+}
+
 // ChannelMessageWithTxn is the same as ChannelMessage but allows you to pass a transaction
 // Check flags against MessageFlag
 func (s *State) ChannelMessageWithTxn(txn *badger.Txn, channelID, messageID string) (st *discordgo.Message, flags MessageFlag, err error) {
@@ -63,6 +69,42 @@ func (s *State) ChannelMessageWithTxn(txn *badger.Txn, channelID, messageID stri
 	if err == nil {
 		flags = MessageFlag(item.UserMeta())
 	}
+	return
+}
+
+// LastChannelMessages returns the last messages in a channel, if n <= 0 then it will return all messages
+func (s *State) LastChannelMessages(channelID string, n int, includeDeleted bool) (m []*MessageWithMeta, err error) {
+	return s.LastChannelMessagesWithTxn(nil, channelID, n, includeDeleted)
+}
+
+// LastChannelMessages returns the last messages in a channel, if n <= 0 then it will return all messages
+func (s *State) LastChannelMessagesWithTxn(txn *badger.Txn, channelID string, n int, includeDeleted bool) (messages []*MessageWithMeta, err error) {
+
+	if n < 0 {
+		messages = make([]*MessageWithMeta, 0, 100)
+	} else {
+		messages = make([]*MessageWithMeta, 0, n)
+	}
+
+	err = s.IterateChannelMessagesNewerFirst(txn, channelID, func(flags MessageFlag, m *discordgo.Message) bool {
+		deleted := flags&MessageFlagDeleted != 0
+
+		if !includeDeleted && deleted {
+			return true
+		}
+
+		messages = append(messages, &MessageWithMeta{
+			Deleted: deleted,
+			Message: m,
+		})
+
+		if n > 0 && len(messages) >= n {
+			return false
+		}
+
+		return true
+	})
+
 	return
 }
 

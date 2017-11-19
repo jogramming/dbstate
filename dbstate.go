@@ -29,7 +29,8 @@ const (
 	// pre-v2: were string based keys
 	// v2: introduced compact binary keys
 	// v3: changed the format itself to json
-	FormatVersion = 3
+	// v4: changed the endiannes of keys to big endian, so they're sorted properly
+	FormatVersion = 4
 )
 
 var (
