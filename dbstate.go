@@ -40,6 +40,10 @@ var (
 var (
 	// Used when the loaded db version differs from the one used in this package version
 	ErrDifferentFormatVersion = errors.New("Trying to open database with different format version than the current one.")
+
+	// Used in some places, but badger.ErrKeyNotFound may also be returned some places
+	// use the IsNotFound(err) function to determine if an error was the result of somehting not being found in state
+	ErrNotFound = errors.New("Object not found in state")
 )
 
 type State struct {
