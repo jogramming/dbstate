@@ -7,12 +7,18 @@ import (
 
 // SelfUser returns the current user from the ready payload,
 // if the ready payload from atleast 1 shard hasn't been received this will return nil
-func (s *State) SelfUser() *discordgo.User {
+func (s *State) SelfUser() (st *discordgo.User) {
 	s.memoryState.RLock()
-	u := s.memoryState.User
+	if s.memoryState.User == nil {
+		s.memoryState.RUnlock()
+		return nil
+	}
+
+	cop := new(discordgo.User)
+	*cop = *s.memoryState.User
 	s.memoryState.RUnlock()
 
-	return u
+	return cop
 }
 
 // Guild retrieves a guild form the state
