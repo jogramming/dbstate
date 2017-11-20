@@ -136,6 +136,105 @@ func (s *State) VoiceStateWithTxn(txn *badger.Txn, guildID, userID string) (st *
 	return
 }
 
+// Calculates the permissions for a member.
+// guild can be nil, if so it will fetch the guild from the channel.GuildID
+// https://support.discordapp.com/hc/en-us/articles/206141927-How-is-the-permission-hierarchy-structured-
+func (s *State) MemberPermissions(g *discordgo.Guild, channelID string, memberID string) (apermissions int, err error) {
+	var channel *discordgo.Channel
+	if g == nil {
+		channel, err = s.Channel(channelID)
+		if err != nil {
+			return 0, err
+		}
+
+		g, err = s.Guild(channel.GuildID)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		for _, c := range g.Channels {
+			if c.ID == channelID {
+				channel = c
+			}
+		}
+
+		if channel == nil {
+			return 0, ErrNotFound
+		}
+	}
+
+	if memberID == g.OwnerID {
+		return discordgo.PermissionAll, nil
+	}
+
+	member, err := s.GuildMember(g.ID, memberID)
+	if err != nil {
+		return 0, err
+	}
+
+	for _, role := range g.Roles {
+		if role.ID == g.ID {
+			apermissions |= role.Permissions
+			break
+		}
+	}
+
+	for _, role := range g.Roles {
+		for _, roleID := range member.Roles {
+			if role.ID == roleID {
+				apermissions |= role.Permissions
+				break
+			}
+		}
+	}
+
+	// Administrator bypasses channel overrides
+	if apermissions&discordgo.PermissionAdministrator == discordgo.PermissionAdministrator {
+		apermissions |= discordgo.PermissionAll
+		return
+	}
+
+	// Apply @everyone overrides from the channel.
+	for _, overwrite := range channel.PermissionOverwrites {
+		if g.ID == overwrite.ID {
+			apermissions &= ^overwrite.Deny
+			apermissions |= overwrite.Allow
+			break
+		}
+	}
+
+	denies := 0
+	allows := 0
+
+	// Member overwrites can override role overrides, so do two passes
+	for _, overwrite := range channel.PermissionOverwrites {
+		for _, roleID := range member.Roles {
+			if overwrite.Type == "role" && roleID == overwrite.ID {
+				denies |= overwrite.Deny
+				allows |= overwrite.Allow
+				break
+			}
+		}
+	}
+
+	apermissions &= ^denies
+	apermissions |= allows
+
+	for _, overwrite := range channel.PermissionOverwrites {
+		if overwrite.Type == "member" && overwrite.ID == memberID {
+			apermissions &= ^overwrite.Deny
+			apermissions |= overwrite.Allow
+			break
+		}
+	}
+
+	if apermissions&discordgo.PermissionAdministrator == discordgo.PermissionAdministrator {
+		apermissions |= discordgo.PermissionAllChannel
+	}
+
+	return
+}
+
 // Guild retrieves a guild form the state
 // Note that members and presences will not be included in this
 // and will have to be queried seperately
